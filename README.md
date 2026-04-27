@@ -21,6 +21,26 @@
 
 ---
 
+## 📸 Screenshots
+
+<div align="center">
+
+### 🏠 Home Page
+![Home Page](public/screenshots/home.png)
+
+### 📚 Browse Library
+![Browse Page](public/screenshots/browse.png)
+
+### 🔐 Sign In / Sign Up
+![Auth Page](public/screenshots/auth.png)
+
+### 📬 Contact Us
+![Contact Page](public/screenshots/contact.png)
+
+</div>
+
+---
+
 ## ✨ Features
 
 | Feature | Description |
