@@ -70,7 +70,7 @@ function RootComponent() {
   return (
     <AuthProvider>
       <Outlet />
-      <Toaster theme="dark" position="top-center" />
+      <Toaster theme="dark" position="top-center" closeButton richColors />
     </AuthProvider>
   );
 }
