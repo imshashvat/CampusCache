@@ -8,6 +8,7 @@ export const BRANCHES = [
   "DS",
   "Biotech",
   "AI/ML",
+  "Cyber Security",
 ] as const;
 
 export const YEARS = [1, 2, 3, 4] as const;
