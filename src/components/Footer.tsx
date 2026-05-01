@@ -3,10 +3,10 @@ import { Library } from "lucide-react";
 
 export function Footer() {
   return (
-    <footer className="border-t border-border/60 bg-background mt-32">
-      <div className="mx-auto max-w-7xl px-6 py-16 lg:px-8">
-        <div className="grid gap-12 md:grid-cols-4">
-          <div className="md:col-span-2">
+    <footer className="border-t border-border/60 bg-background mt-20 sm:mt-32">
+      <div className="mx-auto max-w-7xl px-6 py-12 sm:py-16 lg:px-8">
+        <div className="grid gap-10 sm:grid-cols-2 md:grid-cols-4">
+          <div className="sm:col-span-2">
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-primary-foreground">
                 <Library className="h-5 w-5" />
@@ -21,10 +21,10 @@ export function Footer() {
           <div>
             <h4 className="text-sm font-semibold text-foreground mb-4">Explore</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><Link to="/browse" className="hover:text-mint">Browse library</Link></li>
-              <li><Link to="/contribute" className="hover:text-mint">Contribute</Link></li>
-              <li><Link to="/contact" className="hover:text-mint">Contact us</Link></li>
-              <li><Link to="/auth" search={{ redirect: "/" }} className="hover:text-mint">Sign in</Link></li>
+              <li><Link to="/browse" className="hover:text-mint transition-colors">Browse library</Link></li>
+              <li><Link to="/contribute" className="hover:text-mint transition-colors">Contribute</Link></li>
+              <li><Link to="/contact" className="hover:text-mint transition-colors">Contact us</Link></li>
+              <li><Link to="/auth" search={{ redirect: "/" }} className="hover:text-mint transition-colors">Sign in</Link></li>
             </ul>
           </div>
           <div>
@@ -36,7 +36,7 @@ export function Footer() {
             </ul>
           </div>
         </div>
-        <div className="mt-12 border-t border-border/60 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="mt-10 sm:mt-12 border-t border-border/60 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="text-xs text-muted-foreground font-mono">© {new Date().getFullYear()} CampusCache · made with care</p>
           <p className="text-xs text-muted-foreground italic-serif">knowledge belongs to everyone</p>
         </div>

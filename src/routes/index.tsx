@@ -23,15 +23,22 @@ export const Route = createFileRoute("/")({
 function LandingPage() {
   const [stats, setStats] = useState({ resources: 0, downloads: 0 });
 
+  const fetchStats = async () => {
+    const [{ count: rc }, { data: dl }] = await Promise.all([
+      supabase.from("resources").select("*", { count: "exact", head: true }),
+      supabase.from("resources").select("download_count"),
+    ]);
+    const totalDl = (dl ?? []).reduce((a, r) => a + (r.download_count ?? 0), 0);
+    setStats({ resources: rc ?? 0, downloads: totalDl });
+  };
+
   useEffect(() => {
-    (async () => {
-      const [{ count: rc }, { data: dl }] = await Promise.all([
-        supabase.from("resources").select("*", { count: "exact", head: true }),
-        supabase.from("resources").select("download_count"),
-      ]);
-      const totalDl = (dl ?? []).reduce((a, r) => a + (r.download_count ?? 0), 0);
-      setStats({ resources: rc ?? 0, downloads: totalDl });
-    })();
+    fetchStats();
+    // Re-fetch whenever user navigates back to this tab
+    const onVisible = () => { if (document.visibilityState === "visible") fetchStats(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
