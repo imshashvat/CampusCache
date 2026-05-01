@@ -83,26 +83,42 @@ function BrowsePage() {
 
   useEffect(() => {
     let cancelled = false;
+
+    const runQuery = async (useSharedBranches: boolean) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let q: any = supabase
+        .from("resources")
+        .select("*", { count: "exact" })
+        .order(search.sort === "popular" ? "download_count" : "created_at", { ascending: false });
+
+      if (search.branch) {
+        if (useSharedBranches) {
+          q = q.or(`branch.eq.${search.branch},shared_branches.cs.{${search.branch}}`);
+        } else {
+          q = q.eq("branch", search.branch);
+        }
+      }
+      if (search.year) q = q.eq("year", search.year);
+      if (search.sem) q = q.eq("semester", search.sem);
+      if (search.type) q = q.eq("file_type", search.type);
+      if (search.subject) q = q.eq("subject", search.subject);
+      if (search.q) q = q.or(`title.ilike.%${search.q}%,subject.ilike.%${search.q}%,description.ilike.%${search.q}%`);
+
+      return q.limit(60) as Promise<{ data: unknown[] | null; error: { code?: string; message?: string } | null; count: number | null }>;
+    };
+
     (async () => {
       setResources(null);
       setTotalCount(null);
       try {
-        let query = supabase
-          .from("resources")
-          .select("*", { count: "exact" })
-          .order(search.sort === "popular" ? "download_count" : "created_at", { ascending: false });
+        // Try with shared_branches (works after SQL migration)
+        let { data, error, count } = await runQuery(true);
 
-        // Branch filter: include resources where branch matches OR shared_branches contains the selected branch
-        if (search.branch) {
-          query = query.or(`branch.eq.${search.branch},shared_branches.cs.{${search.branch}}`);
+        // If shared_branches column doesn't exist yet, fall back to simple branch filter
+        if (error && (error.code === "42703" || error.message?.toLowerCase().includes("shared_branches"))) {
+          ({ data, error, count } = await runQuery(false));
         }
-        if (search.year) query = query.eq("year", search.year);
-        if (search.sem) query = query.eq("semester", search.sem);
-        if (search.type) query = query.eq("file_type", search.type as never);
-        if (search.subject) query = query.eq("subject", search.subject);
-        if (search.q) query = query.or(`title.ilike.%${search.q}%,subject.ilike.%${search.q}%,description.ilike.%${search.q}%`);
 
-        const { data, error, count } = await query.limit(60);
         if (error) throw error;
         if (cancelled) return;
         const hydratedResources = await attachUploaderProfiles((data as unknown as Resource[]) ?? []);
