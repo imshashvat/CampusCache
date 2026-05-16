@@ -113,21 +113,68 @@ function ResourceDetail() {
   };
 
   /**
-   * Opens the file inline in a new browser tab.
-   * Uses createSignedUrl with `download: false` so Supabase explicitly sets
-   * Content-Disposition: inline — this overrides any attachment metadata
-   * stored on the file at upload time, making it work in Chrome and all browsers.
+   * Opens the file inline in a new browser tab — works in ALL browsers including Chrome.
+   *
+   * Key insight: Chrome blocks popups opened AFTER an await (async popup blocker),
+   * and it strictly respects Content-Disposition:attachment even on PDFs.
+   *
+   * Solution:
+   *  1. Open a blank window SYNCHRONOUSLY (in the click event — Chrome allows this).
+   *  2. Await the signed URL.
+   *  3. For PDFs: write an HTML page with <embed type="application/pdf"> — this
+   *     explicitly tells Chrome's PDF plugin to render the file, bypassing any
+   *     Content-Disposition header entirely.
+   *  4. For other types: navigate the window to the signed URL.
    */
   const handleOpen = async () => {
     if (!r) return;
     setOpening(true);
+
+    // Step 1 — must be synchronous so Chrome doesn't block as popup
+    const win = window.open("about:blank", "_blank");
+    if (!win) {
+      toast.error("Popup blocked — please allow popups for this site and try again.");
+      setOpening(false);
+      return;
+    }
+
     try {
+      // Step 2 — get a signed URL (download:false as belt-and-suspenders)
       const { data, error } = await supabase.storage
         .from("resources")
         .createSignedUrl(r.file_path, 300, { download: false });
       if (error || !data) throw error ?? new Error("Could not generate URL");
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-    } catch {
+
+      const ext = r.file_path.split(".").pop()?.toLowerCase() ?? "";
+      const isPdf = ext === "pdf";
+
+      if (isPdf) {
+        // Step 3 — write a full-page embed so Chrome's PDF viewer is invoked
+        // explicitly via type="application/pdf", bypassing Content-Disposition.
+        win.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>${r.title.replace(/</g, "&lt;")}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; background: #525659; }
+    embed { display: block; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <embed src="${data.signedUrl}" type="application/pdf" width="100%" height="100%" />
+</body>
+</html>`);
+        win.document.close();
+      } else {
+        // Step 4 — for non-PDFs just navigate (DOCX/PPTX etc. will still download
+        // in most browsers but that's the correct behaviour for those file types)
+        win.location.href = data.signedUrl;
+      }
+    } catch (err) {
+      console.error(err);
+      win.close();
       toast.error("Could not open file. Please try downloading instead.");
     } finally {
       setOpening(false);
