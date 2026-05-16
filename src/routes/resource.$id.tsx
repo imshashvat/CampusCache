@@ -48,6 +48,7 @@ function ResourceDetail() {
   const { isAdmin } = useAuth();
   const [r, setR] = useState<Resource | null | undefined>(undefined);
   const [downloading, setDownloading] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   // Edit description state
@@ -112,15 +113,25 @@ function ResourceDetail() {
   };
 
   /**
-   * Opens the file in a new browser tab using the PUBLIC URL.
-   * The bucket is public so no signed URL is needed — this avoids
-   * Chrome treating the signed URL's Content-Disposition: attachment
-   * header as a forced download.
+   * Opens the file inline in a new browser tab.
+   * Uses createSignedUrl with `download: false` so Supabase explicitly sets
+   * Content-Disposition: inline — this overrides any attachment metadata
+   * stored on the file at upload time, making it work in Chrome and all browsers.
    */
-  const handleOpen = () => {
+  const handleOpen = async () => {
     if (!r) return;
-    const { data } = supabase.storage.from("resources").getPublicUrl(r.file_path);
-    window.open(data.publicUrl, "_blank", "noopener,noreferrer");
+    setOpening(true);
+    try {
+      const { data, error } = await supabase.storage
+        .from("resources")
+        .createSignedUrl(r.file_path, 300, { download: false });
+      if (error || !data) throw error ?? new Error("Could not generate URL");
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      toast.error("Could not open file. Please try downloading instead.");
+    } finally {
+      setOpening(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -295,16 +306,17 @@ function ResourceDetail() {
               {downloading ? "Downloading…" : "Download"}
             </Button>
 
-            {/* Open — opens file in a new tab using the public URL (no forced download) */}
+            {/* Open — inline view via signed URL with download:false (forces Content-Disposition: inline) */}
             <Button
               id="open-btn"
               onClick={handleOpen}
+              disabled={opening}
               variant="outline"
               size="lg"
               className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-mint/40"
             >
               <ExternalLink className="h-4 w-4" />
-              Open in browser
+              {opening ? "Opening…" : "Open in browser"}
             </Button>
 
             {isAdmin && (
