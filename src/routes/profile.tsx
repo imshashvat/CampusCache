@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Download, FileText, Trash2 } from "lucide-react";
+import { Download, FileText, Trash2, Trophy, Star, Upload, TrendingUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -22,6 +22,23 @@ interface MyResource {
   id: string; title: string; file_type: string; download_count: number; created_at: string; file_path: string;
 }
 
+interface ContribStats {
+  all_time_points: number;
+  monthly_points: number;
+  upload_count: number;
+  downloads_received: number;
+  ratings_received: number;
+  rank: number | null;
+}
+
+const BADGE_DEFS = [
+  { key: "first_upload",   label: "First Upload",   icon: "🎯", check: (s: ContribStats) => s.upload_count >= 1 },
+  { key: "100_downloads",  label: "100 Downloads",  icon: "📥", check: (s: ContribStats) => s.downloads_received >= 100 },
+  { key: "power_uploader", label: "Power Uploader", icon: "🔥", check: (s: ContribStats) => s.upload_count >= 10 },
+  { key: "well_rated",     label: "Well Rated",     icon: "⭐", check: (s: ContribStats) => s.ratings_received >= 5 },
+  { key: "500_downloads",  label: "500 Downloads",  icon: "🏅", check: (s: ContribStats) => s.downloads_received >= 500 },
+] as const;
+
 function ProfilePage() {
   const { user, profile, loading, refreshProfile } = useAuth();
   const navigate = useNavigate();
@@ -30,6 +47,7 @@ function ProfilePage() {
   const [year, setYear] = useState("");
   const [saving, setSaving] = useState(false);
   const [mine, setMine] = useState<MyResource[]>([]);
+  const [stats, setStats] = useState<ContribStats | null>(null);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth", search: { redirect: "/profile" } });
@@ -48,6 +66,22 @@ function ProfilePage() {
     supabase.from("resources").select("id,title,file_type,download_count,created_at,file_path")
       .eq("uploaded_by", user.id).order("created_at", { ascending: false })
       .then(({ data }) => setMine((data as MyResource[]) ?? []));
+    // Load leaderboard stats for this user
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any).rpc("get_leaderboard", { p_branch: null, p_limit: 200 }).then(({ data }: { data: unknown }) => {
+      const all = (data ?? []) as Array<{
+        user_id: string; all_time_points: number; monthly_points: number;
+        upload_count: number; downloads_received: number; ratings_received: number;
+      }>;
+      const sorted = [...all].sort((a, b) => b.monthly_points - a.monthly_points);
+      const idx = sorted.findIndex((e) => e.user_id === user.id);
+      if (idx !== -1) {
+        setStats({ ...sorted[idx], rank: idx + 1 });
+      } else {
+        // User has no uploads yet — show zeroed stats
+        setStats({ all_time_points: 0, monthly_points: 0, upload_count: 0, downloads_received: 0, ratings_received: 0, rank: null });
+      }
+    });
   }, [user]);
 
   const save = async () => {
@@ -79,6 +113,54 @@ function ProfilePage() {
         <h1 className="mt-3 font-serif text-4xl sm:text-5xl text-foreground">
           {profile?.full_name || "Profile"}
         </h1>
+
+        {/* ── CONTRIBUTOR STATS ── */}
+        {stats && (
+          <div className="mt-8 rounded-2xl border border-border/60 bg-card/60 p-6">
+            <div className="flex items-center justify-between flex-wrap gap-4 mb-5">
+              <div className="flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-mint" />
+                <span className="font-serif text-xl text-foreground">Contributor stats</span>
+              </div>
+              {stats.rank && (
+                <span className="text-xs font-mono text-mint border border-mint/30 bg-mint/5 rounded-full px-3 py-1">
+                  #{stats.rank} this month
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+              {[
+                { icon: TrendingUp, label: "Points (30d)", value: stats.monthly_points },
+                { icon: Trophy,    label: "All-time pts", value: stats.all_time_points },
+                { icon: Upload,    label: "Uploads",      value: stats.upload_count },
+                { icon: Download,  label: "DLs received", value: stats.downloads_received },
+              ].map((s) => (
+                <div key={s.label} className="rounded-xl bg-background/60 border border-border/40 p-4 text-center">
+                  <s.icon className="h-4 w-4 mx-auto text-mint mb-1" />
+                  <div className="font-serif text-2xl text-gradient-primary">{s.value.toLocaleString()}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">{s.label}</div>
+                </div>
+              ))}
+            </div>
+            {/* Badges */}
+            {(() => {
+              const earned = BADGE_DEFS.filter((b) => b.check(stats));
+              if (earned.length === 0) return (
+                <p className="text-xs text-muted-foreground italic-serif">Upload resources and get downloads to earn badges 🎯</p>
+              );
+              return (
+                <div className="flex flex-wrap gap-2">
+                  {earned.map((b) => (
+                    <div key={b.key} className="flex items-center gap-2 rounded-full border border-mint/20 bg-mint/5 px-3 py-1.5 text-xs">
+                      <span className="text-base">{b.icon}</span>
+                      <span className="font-medium text-foreground">{b.label}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+        )}
 
         <div className="mt-10 rounded-2xl border border-border/60 bg-card/60 p-8">
           <h2 className="font-serif text-2xl mb-6">Edit details</h2>

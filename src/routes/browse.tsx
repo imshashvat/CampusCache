@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import React, { useEffect, useMemo, useState } from "react";
-import { Search, Download, X, FileText, SlidersHorizontal, Trash2, Filter } from "lucide-react";
+import { Search, Download, X, FileText, SlidersHorizontal, Trash2, Filter, Star } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
@@ -22,7 +22,7 @@ const searchSchema = z.object({
   sem: z.coerce.number().optional(),
   type: z.string().optional(),
   subject: z.string().optional(),
-  sort: z.enum(["new", "popular"]).optional(),
+  sort: z.enum(["new", "popular", "rating"]).optional(),
 });
 
 export const Route = createFileRoute("/browse")({
@@ -64,6 +64,8 @@ function BrowsePage() {
   const [subjects, setSubjects] = useState<string[]>([]);
   const [search_q, setQ] = useState(search.q ?? "");
   const [filterOpen, setFilterOpen] = useState(false);
+  // avg ratings keyed by resource_id
+  const [avgRatings, setAvgRatings] = useState<Record<string, number>>({});
 
   useEffect(() => { setQ(search.q ?? ""); }, [search.q]);
 
@@ -134,6 +136,28 @@ function BrowsePage() {
     })();
     return () => { cancelled = true; };
   }, [search.branch, search.year, search.sem, search.type, search.subject, search.q, search.sort]);
+
+  // Load avg ratings in bulk whenever the resource list changes
+  useEffect(() => {
+    if (!resources || resources.length === 0) { setAvgRatings({}); return; }
+    const ids = resources.map((r) => r.id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (supabase as any)
+      .from("ratings")
+      .select("resource_id, stars")
+      .in("resource_id", ids)
+      .then(({ data }: { data: { resource_id: string; stars: number }[] | null }) => {
+        const map: Record<string, { sum: number; count: number }> = {};
+        (data ?? []).forEach(({ resource_id, stars }) => {
+          if (!map[resource_id]) map[resource_id] = { sum: 0, count: 0 };
+          map[resource_id].sum += stars;
+          map[resource_id].count += 1;
+        });
+        const avgMap: Record<string, number> = {};
+        Object.entries(map).forEach(([id, { sum, count }]) => { avgMap[id] = sum / count; });
+        setAvgRatings(avgMap);
+      });
+  }, [resources]);
 
   const update = (patch: Partial<typeof search>) => {
     navigate({ to: "/browse", search: { ...search, ...patch } });
@@ -261,18 +285,24 @@ function BrowsePage() {
               <div className="text-sm text-muted-foreground">{resultLabel}</div>
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">Sort:</span>
-                <button onClick={() => update({ sort: "new" })} className={search.sort !== "popular" ? "text-mint underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>Newest</button>
+                <button onClick={() => update({ sort: "new" })} className={search.sort !== "popular" && search.sort !== "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>Newest</button>
                 <span className="text-muted-foreground">·</span>
                 <button onClick={() => update({ sort: "popular" })} className={search.sort === "popular" ? "text-mint underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>Most downloaded</button>
+                <span className="text-muted-foreground">·</span>
+                <button onClick={() => update({ sort: "rating" })} className={search.sort === "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>
+                  <Star className="inline h-3 w-3 mr-0.5 fill-current" />Top rated
+                </button>
               </div>
             </div>
 
             {/* Mobile sort */}
             <div className="flex lg:hidden items-center gap-2 text-sm mb-4">
               <span className="text-muted-foreground">Sort:</span>
-              <button onClick={() => update({ sort: "new" })} className={search.sort !== "popular" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>Newest</button>
+              <button onClick={() => update({ sort: "new" })} className={search.sort !== "popular" && search.sort !== "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>Newest</button>
               <span className="text-muted-foreground">·</span>
               <button onClick={() => update({ sort: "popular" })} className={search.sort === "popular" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>Popular</button>
+              <span className="text-muted-foreground">·</span>
+              <button onClick={() => update({ sort: "rating" })} className={search.sort === "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>⭐ Rated</button>
             </div>
 
             {activeFilters.length > 0 && (
@@ -304,10 +334,14 @@ function BrowsePage() {
 
             {resources && resources.length > 0 && (
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
-                {resources.map((r) => (
+                {(search.sort === "rating"
+                  ? [...resources].sort((a, b) => (avgRatings[b.id] ?? 0) - (avgRatings[a.id] ?? 0))
+                  : resources
+                ).map((r) => (
                   <ResourceCard
                     key={r.id}
                     r={r}
+                    avgRating={avgRatings[r.id]}
                     canDelete={isAdmin}
                     onDelete={(id) => setResources((prev) => (prev ?? []).filter((x) => x.id !== id))}
                   />
@@ -373,7 +407,7 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-function ResourceCard({ r, canDelete, onDelete }: { r: Resource; canDelete: boolean; onDelete: (id: string) => void }) {
+function ResourceCard({ r, avgRating, canDelete, onDelete }: { r: Resource; avgRating?: number; canDelete: boolean; onDelete: (id: string) => void }) {
   const color = fileTypeColor(r.file_type);
   const [deleting, setDeleting] = useState(false);
   const isShared = r.shared_branches && r.shared_branches.length > 0;
@@ -455,8 +489,16 @@ function ResourceCard({ r, canDelete, onDelete }: { r: Resource; canDelete: bool
           <span className="mx-1.5">·</span>
           {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
         </div>
-        <div className="flex items-center gap-1 text-mint shrink-0">
-          <Download className="h-3 w-3" /> {r.download_count}
+        <div className="flex items-center gap-2 shrink-0">
+          {avgRating !== undefined && (
+            <span className="flex items-center gap-0.5 text-amber-400">
+              <Star className="h-3 w-3 fill-amber-400" />
+              <span className="font-mono">{avgRating.toFixed(1)}</span>
+            </span>
+          )}
+          <span className="flex items-center gap-1 text-mint">
+            <Download className="h-3 w-3" /> {r.download_count}
+          </span>
         </div>
       </div>
       <div className="mt-2 text-[10px] text-muted-foreground">{formatBytes(r.file_size)}</div>
