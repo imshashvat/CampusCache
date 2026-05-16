@@ -115,22 +115,20 @@ function ResourceDetail() {
   /**
    * Opens the file inline in a new browser tab — works in ALL browsers including Chrome.
    *
-   * Key insight: Chrome blocks popups opened AFTER an await (async popup blocker),
-   * and it strictly respects Content-Disposition:attachment even on PDFs.
+   * Strategy by file type:
+   *  - PDF       → <embed type="application/pdf"> bypasses Content-Disposition header
+   *  - Office    → Microsoft Office Online Viewer (renders PPT/PPTX/DOC/DOCX/XLS/XLSX
+   *                in the browser exactly like PowerPoint/Word/Excel) using the public URL
+   *  - Others    → signed URL navigation (download:false)
    *
-   * Solution:
-   *  1. Open a blank window SYNCHRONOUSLY (in the click event — Chrome allows this).
-   *  2. Await the signed URL.
-   *  3. For PDFs: write an HTML page with <embed type="application/pdf"> — this
-   *     explicitly tells Chrome's PDF plugin to render the file, bypassing any
-   *     Content-Disposition header entirely.
-   *  4. For other types: navigate the window to the signed URL.
+   * IMPORTANT: window.open() is called SYNCHRONOUSLY before any await so Chrome's
+   * popup blocker doesn't kill it.
    */
   const handleOpen = async () => {
     if (!r) return;
     setOpening(true);
 
-    // Step 1 — must be synchronous so Chrome doesn't block as popup
+    // Must be synchronous — Chrome blocks popups opened after an await
     const win = window.open("about:blank", "_blank");
     if (!win) {
       toast.error("Popup blocked — please allow popups for this site and try again.");
@@ -139,18 +137,19 @@ function ResourceDetail() {
     }
 
     try {
-      // Step 2 — get a signed URL (download:false as belt-and-suspenders)
-      const { data, error } = await supabase.storage
-        .from("resources")
-        .createSignedUrl(r.file_path, 300, { download: false });
-      if (error || !data) throw error ?? new Error("Could not generate URL");
-
       const ext = r.file_path.split(".").pop()?.toLowerCase() ?? "";
       const isPdf = ext === "pdf";
+      const isOffice = ["ppt", "pptx", "doc", "docx", "xls", "xlsx"].includes(ext);
 
       if (isPdf) {
-        // Step 3 — write a full-page embed so Chrome's PDF viewer is invoked
-        // explicitly via type="application/pdf", bypassing Content-Disposition.
+        // Get a short-lived signed URL (download:false as extra hint to server)
+        const { data, error } = await supabase.storage
+          .from("resources")
+          .createSignedUrl(r.file_path, 300, { download: false });
+        if (error || !data) throw error ?? new Error("Could not generate URL");
+
+        // Write full-page PDF embed — Chrome's PDF plugin is invoked by type attribute,
+        // completely ignoring any Content-Disposition header on the response.
         win.document.write(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -167,11 +166,28 @@ function ResourceDetail() {
 </body>
 </html>`);
         win.document.close();
+
+      } else if (isOffice) {
+        // Microsoft Office Online Viewer — renders PPT/PPTX/DOC/DOCX/XLS/XLSX
+        // natively in-browser (same engine as PowerPoint/Word/Excel Online).
+        // Requires a publicly accessible URL — our bucket is already public so
+        // getPublicUrl() works perfectly here, no expiry, no auth needed.
+        const { data: pubData } = supabase.storage
+          .from("resources")
+          .getPublicUrl(r.file_path);
+        const viewerUrl =
+          `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(pubData.publicUrl)}`;
+        win.location.href = viewerUrl;
+
       } else {
-        // Step 4 — for non-PDFs just navigate (DOCX/PPTX etc. will still download
-        // in most browsers but that's the correct behaviour for those file types)
+        // All other file types — navigate to signed URL
+        const { data, error } = await supabase.storage
+          .from("resources")
+          .createSignedUrl(r.file_path, 300, { download: false });
+        if (error || !data) throw error ?? new Error("Could not generate URL");
         win.location.href = data.signedUrl;
       }
+
     } catch (err) {
       console.error(err);
       win.close();
