@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ArrowRight, BookOpen, Download, Sparkles, Upload, Users, FileText, GraduationCap, ShieldCheck, Layers, Zap } from "lucide-react";
 import { Header } from "@/components/Header";
@@ -21,7 +21,10 @@ export const Route = createFileRoute("/")({
 });
 
 function LandingPage() {
+  const router = useRouter();
   const [stats, setStats] = useState({ resources: 0, downloads: 0 });
+  // Bumped after every successful fetch so CountUp re-animates with the real value
+  const [fetchId, setFetchId] = useState(0);
 
   const fetchStats = async () => {
     const [{ count: rc }, { data: dl }] = await Promise.all([
@@ -30,16 +33,18 @@ function LandingPage() {
     ]);
     const totalDl = (dl ?? []).reduce((a, r) => a + (r.download_count ?? 0), 0);
     setStats({ resources: rc ?? 0, downloads: totalDl });
+    setFetchId((n) => n + 1);
   };
 
   useEffect(() => {
     fetchStats();
-    // Re-fetch whenever user navigates back to this tab
+    // Re-fetch whenever browser tab becomes visible again
     const onVisible = () => { if (document.visibilityState === "visible") fetchStats(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
+  // Re-run whenever the router navigates to this page
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router.history.location.href]);
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -91,7 +96,8 @@ function LandingPage() {
             ].map((s) => (
               <div key={s.label} className="bg-card/70 p-6 sm:p-8">
                 <div className="font-serif text-4xl sm:text-5xl text-gradient-primary">
-                  <CountUp end={s.value} suffix={s.suffix} />
+                  {/* key={fetchId} forces CountUp to re-animate on every stats refresh */}
+                  <CountUp key={`${s.label}-${fetchId}`} end={s.value} suffix={s.suffix} />
                 </div>
                 <div className="mt-2 text-[10px] uppercase tracking-[0.22em] font-mono text-muted-foreground">{s.label}</div>
               </div>

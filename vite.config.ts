@@ -7,11 +7,8 @@ import tsconfigPaths from "vite-tsconfig-paths";
 export default defineConfig({
   plugins: [
     tailwindcss(),
-    tanstackStart({
-      server: {
-        preset: "vercel",
-      },
-    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    tanstackStart({ target: "vercel" } as any),
     react(),
     tsconfigPaths(),
   ],

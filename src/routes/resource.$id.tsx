@@ -1,6 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Download, ArrowLeft, FileText, Calendar, User as UserIcon, HardDrive, Trash2, ExternalLink } from "lucide-react";
+import {
+  Download, ArrowLeft, FileText, Calendar, User as UserIcon,
+  HardDrive, Trash2, ExternalLink, Pencil, Check, X,
+} from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
@@ -8,6 +11,7 @@ import { Footer } from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/lib/auth";
 import { attachUploaderProfiles } from "@/lib/resources";
 import { supabase } from "@/integrations/supabase/client";
@@ -44,8 +48,12 @@ function ResourceDetail() {
   const { isAdmin } = useAuth();
   const [r, setR] = useState<Resource | null | undefined>(undefined);
   const [downloading, setDownloading] = useState(false);
-  const [opening, setOpening] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // Edit description state
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descDraft, setDescDraft] = useState("");
+  const [savingDesc, setSavingDesc] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -103,19 +111,16 @@ function ResourceDetail() {
     }
   };
 
-  /** Opens the file in a new browser tab cleanly */
-  const handleOpen = async () => {
+  /**
+   * Opens the file in a new browser tab using the PUBLIC URL.
+   * The bucket is public so no signed URL is needed — this avoids
+   * Chrome treating the signed URL's Content-Disposition: attachment
+   * header as a forced download.
+   */
+  const handleOpen = () => {
     if (!r) return;
-    setOpening(true);
-    try {
-      const { data, error } = await supabase.storage.from("resources").createSignedUrl(r.file_path, 300);
-      if (error || !data) throw error ?? new Error("Could not generate URL");
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
-    } catch {
-      toast.error("Could not open file. Please try downloading instead.");
-    } finally {
-      setOpening(false);
-    }
+    const { data } = supabase.storage.from("resources").getPublicUrl(r.file_path);
+    window.open(data.publicUrl, "_blank", "noopener,noreferrer");
   };
 
   const handleDelete = async () => {
@@ -131,6 +136,35 @@ function ResourceDetail() {
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Delete failed");
       setDeleting(false);
+    }
+  };
+
+  const startEditDesc = () => {
+    setDescDraft(r?.description ?? "");
+    setEditingDesc(true);
+  };
+
+  const cancelEditDesc = () => {
+    setEditingDesc(false);
+    setDescDraft("");
+  };
+
+  const saveDescription = async () => {
+    if (!r) return;
+    setSavingDesc(true);
+    try {
+      const { error } = await supabase
+        .from("resources")
+        .update({ description: descDraft.trim() || null })
+        .eq("id", r.id);
+      if (error) throw error;
+      setR((prev) => prev ? { ...prev, description: descDraft.trim() || null } : prev);
+      setEditingDesc(false);
+      toast.success("Description updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setSavingDesc(false);
     }
   };
 
@@ -183,7 +217,53 @@ function ResourceDetail() {
             </Badge>
             <h1 className="mt-4 font-serif text-4xl sm:text-5xl text-foreground leading-tight">{r.title}</h1>
             {r.subject && <p className="mt-3 text-lg text-muted-foreground italic-serif">{r.subject}</p>}
-            {r.description && <p className="mt-6 text-foreground/80 leading-relaxed whitespace-pre-line">{r.description}</p>}
+
+            {/* Description block */}
+            <div className="mt-6">
+              {editingDesc ? (
+                <div className="space-y-2">
+                  <Textarea
+                    value={descDraft}
+                    onChange={(e) => setDescDraft(e.target.value)}
+                    placeholder="Add a description for this resource…"
+                    rows={4}
+                    className="bg-card/60 border-border/60 resize-none text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={saveDescription}
+                      disabled={savingDesc}
+                      className="bg-gradient-primary text-primary-foreground hover:opacity-90"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      {savingDesc ? "Saving…" : "Save"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={cancelEditDesc} disabled={savingDesc}>
+                      <X className="h-3.5 w-3.5" /> Cancel
+                    </Button>
+                </div>
+                </div>
+              ) : (
+                <div className="group relative">
+                  {r.description ? (
+                    <p className="text-foreground/80 leading-relaxed whitespace-pre-line">{r.description}</p>
+                  ) : (
+                    <p className="text-muted-foreground/60 italic text-sm">No description provided.</p>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={startEditDesc}
+                      className="mt-2 inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-mint transition-colors"
+                      title="Edit description"
+                    >
+                      <Pencil className="h-3 w-3" />
+                      {r.description ? "Edit description" : "Add description"}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Preview */}
             <div className="mt-8 rounded-xl border border-border/60 bg-card/40 overflow-hidden" style={{ minHeight: 480 }}>
@@ -215,17 +295,16 @@ function ResourceDetail() {
               {downloading ? "Downloading…" : "Download"}
             </Button>
 
-            {/* Open — opens file in a new tab cleanly */}
+            {/* Open — opens file in a new tab using the public URL (no forced download) */}
             <Button
               id="open-btn"
               onClick={handleOpen}
-              disabled={opening}
               variant="outline"
               size="lg"
               className="w-full h-11 border-border/60 text-muted-foreground hover:text-foreground hover:border-mint/40"
             >
               <ExternalLink className="h-4 w-4" />
-              {opening ? "Opening…" : "Open in browser"}
+              Open in browser
             </Button>
 
             {isAdmin && (
