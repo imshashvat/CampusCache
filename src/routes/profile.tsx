@@ -66,19 +66,24 @@ function ProfilePage() {
     supabase.from("resources").select("id,title,file_type,download_count,created_at,file_path")
       .eq("uploaded_by", user.id).order("created_at", { ascending: false })
       .then(({ data }) => setMine((data as MyResource[]) ?? []));
-    // Load leaderboard stats for this user
+
+    // Use get_own_stats for accurate profile stats (works for admins too)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).rpc("get_leaderboard", { p_branch: null, p_limit: 200 }).then(({ data }: { data: unknown }) => {
-      const all = (data ?? []) as Array<{
-        user_id: string; all_time_points: number; monthly_points: number;
+    (supabase as any).rpc("get_own_stats", { p_user_id: user.id }).then(({ data }: { data: unknown }) => {
+      const row = (Array.isArray(data) ? data[0] : null) as {
+        monthly_points: number; all_time_points: number;
         upload_count: number; downloads_received: number; ratings_received: number;
-      }>;
-      const sorted = [...all].sort((a, b) => b.monthly_points - a.monthly_points);
-      const idx = sorted.findIndex((e) => e.user_id === user.id);
-      if (idx !== -1) {
-        setStats({ ...sorted[idx], rank: idx + 1 });
+      } | null;
+      if (row) {
+        // Also fetch rank from leaderboard (may be null for admins)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (supabase as any).rpc("get_leaderboard", { p_branch: null, p_limit: 200 }).then(({ data: lb }: { data: unknown }) => {
+          const sorted = ([...(Array.isArray(lb) ? lb : [])] as { user_id: string; monthly_points: number }[])
+            .sort((a, b) => b.monthly_points - a.monthly_points);
+          const idx = sorted.findIndex((e) => e.user_id === user.id);
+          setStats({ ...row, rank: idx !== -1 ? idx + 1 : null });
+        });
       } else {
-        // User has no uploads yet — show zeroed stats
         setStats({ all_time_points: 0, monthly_points: 0, upload_count: 0, downloads_received: 0, ratings_received: 0, rank: null });
       }
     });
