@@ -1,5 +1,6 @@
 -- ============================================================
--- Fix: Exclude admins from the Contributor Leaderboard
+-- Fix: Only count authenticated-user downloads in leaderboard
+-- Guest downloads (user_id IS NULL) are excluded from points.
 -- Run this in: Supabase Dashboard → SQL Editor → New query → Run
 -- ============================================================
 
@@ -19,7 +20,7 @@ RETURNS TABLE(
   ratings_received   BIGINT
 ) LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
   WITH
-  -- Exclude admin users from the leaderboard entirely
+  -- Exclude admin users entirely
   non_admin_profiles AS (
     SELECT p.id, p.full_name, p.branch
     FROM profiles p
@@ -40,20 +41,28 @@ RETURNS TABLE(
       AND created_at >= now() - interval '30 days'
     GROUP BY uploaded_by
   ),
-  -- Only count downloads from non-admin users
+  -- All-time downloads: only count authenticated (non-null user_id) downloads
+  -- Guest downloads (user_id IS NULL) are excluded intentionally
   download_totals AS (
-    SELECT r.uploaded_by, COALESCE(SUM(r.download_count), 0) AS total
-    FROM resources r WHERE r.uploaded_by IS NOT NULL
+    SELECT r.uploaded_by, COUNT(*) AS total
+    FROM downloads d
+    JOIN resources r ON d.resource_id = r.id
+    WHERE r.uploaded_by IS NOT NULL
+      AND d.user_id IS NOT NULL          -- exclude guest downloads
+      AND NOT EXISTS (                   -- exclude admin downloads
+        SELECT 1 FROM user_roles ur
+        WHERE ur.user_id = d.user_id AND ur.role = 'admin'
+      )
     GROUP BY r.uploaded_by
   ),
-  -- Recent downloads: from downloads table, exclude admin downloaders
+  -- Rolling 30-day downloads: same guest + admin exclusion
   recent_downloads AS (
     SELECT r.uploaded_by, COUNT(*) AS cnt
     FROM downloads d
     JOIN resources r ON d.resource_id = r.id
     WHERE r.uploaded_by IS NOT NULL
+      AND d.user_id IS NOT NULL          -- exclude guest downloads
       AND d.created_at >= now() - interval '30 days'
-      -- Exclude downloads made by admins
       AND NOT EXISTS (
         SELECT 1 FROM user_roles ur
         WHERE ur.user_id = d.user_id AND ur.role = 'admin'
@@ -85,12 +94,12 @@ RETURNS TABLE(
     p.id                                AS user_id,
     p.full_name,
     p.branch,
-    -- Rolling 30-day score
+    -- Rolling 30-day score (guest downloads excluded)
     (  COALESCE(ru.cnt,  0) * 10
      + COALESCE(rd.cnt,  0)
      + COALESCE(rr.cnt,  0) * 2
     )                                   AS monthly_points,
-    -- All-time score
+    -- All-time score (guest downloads excluded)
     (  COALESCE(au.cnt,  0) * 10
      + COALESCE(dt.total, 0)
      + COALESCE(fc.cnt,  0) * 5
@@ -109,7 +118,7 @@ RETURNS TABLE(
   LEFT JOIN all_ratings_received    ar ON ar.uploaded_by  = p.id
   LEFT JOIN recent_ratings_received rr ON rr.uploaded_by  = p.id
   WHERE (p_branch IS NULL OR p.branch = p_branch)
-    AND COALESCE(au.cnt, 0) > 0   -- only show users who've uploaded at least once
+    AND COALESCE(au.cnt, 0) > 0
   ORDER BY monthly_points DESC, all_time_points DESC
   LIMIT p_limit
 $$;

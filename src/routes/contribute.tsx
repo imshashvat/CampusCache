@@ -119,6 +119,9 @@ function Leaderboard() {
           <p className="mt-2 text-sm text-muted-foreground">
             Points: upload ×10 · download received ×1 · featured ×5 · rating received ×2
           </p>
+          <p className="mt-1 text-xs text-muted-foreground/60 flex items-center gap-1">
+            <span>ℹ️</span> Only signed-in user downloads count — guest downloads are not included.
+          </p>
         </div>
         <button
           onClick={() => load(filterBranch || undefined)}
