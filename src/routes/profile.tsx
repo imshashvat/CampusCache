@@ -63,30 +63,72 @@ function ProfilePage() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from("resources").select("id,title,file_type,download_count,created_at,file_path")
-      .eq("uploaded_by", user.id).order("created_at", { ascending: false })
-      .then(({ data }) => setMine((data as MyResource[]) ?? []));
 
-    // Use get_own_stats for accurate profile stats (works for admins too)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any).rpc("get_own_stats", { p_user_id: user.id }).then(({ data }: { data: unknown }) => {
-      const row = (Array.isArray(data) ? data[0] : null) as {
-        monthly_points: number; all_time_points: number;
-        upload_count: number; downloads_received: number; ratings_received: number;
-      } | null;
-      if (row) {
-        // Also fetch rank from leaderboard (may be null for admins)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any).rpc("get_leaderboard", { p_branch: null, p_limit: 200 }).then(({ data: lb }: { data: unknown }) => {
-          const sorted = ([...(Array.isArray(lb) ? lb : [])] as { user_id: string; monthly_points: number }[])
-            .sort((a, b) => b.monthly_points - a.monthly_points);
-          const idx = sorted.findIndex((e) => e.user_id === user.id);
-          setStats({ ...row, rank: idx !== -1 ? idx + 1 : null });
+    // Load user's own resources
+    supabase.from("resources")
+      .select("id,title,file_type,download_count,created_at,file_path,is_featured")
+      .eq("uploaded_by", user.id)
+      .order("created_at", { ascending: false })
+      .then(async ({ data: myResData }) => {
+        const myRes = (myResData ?? []) as (MyResource & { is_featured?: boolean })[];
+        setMine(myRes);
+
+        const resourceIds = myRes.map((r) => r.id);
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+        // Compute stats from direct queries — no RPC needed, works for all users
+        const [dlAllResult, dlRecentResult, ratingAllResult, ratingRecentResult, lbResult] = await Promise.all([
+          // All authenticated downloads of user's files
+          resourceIds.length > 0
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ? (supabase as any).from("downloads").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).not("user_id", "is", null)
+            : Promise.resolve({ count: 0 }),
+          // Recent (30d) authenticated downloads
+          resourceIds.length > 0
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ? (supabase as any).from("downloads").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).not("user_id", "is", null).gte("created_at", thirtyDaysAgo)
+            : Promise.resolve({ count: 0 }),
+          // All ratings on user's files
+          resourceIds.length > 0
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ? (supabase as any).from("ratings").select("*", { count: "exact", head: true }).in("resource_id", resourceIds)
+            : Promise.resolve({ count: 0 }),
+          // Recent (30d) ratings
+          resourceIds.length > 0
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ? (supabase as any).from("ratings").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).gte("created_at", thirtyDaysAgo)
+            : Promise.resolve({ count: 0 }),
+          // Leaderboard for rank
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (supabase as any).rpc("get_leaderboard", { p_branch: null, p_limit: 200 }),
+        ]);
+
+        const uploadCount     = myRes.length;
+        const dlAll           = (dlAllResult as { count: number | null }).count ?? 0;
+        const dlRecent        = (dlRecentResult as { count: number | null }).count ?? 0;
+        const ratingAll       = (ratingAllResult as { count: number | null }).count ?? 0;
+        const ratingRecent    = (ratingRecentResult as { count: number | null }).count ?? 0;
+        const featuredCount   = myRes.filter((r) => r.is_featured).length;
+        const recentUploads   = myRes.filter((r) => r.created_at >= thirtyDaysAgo).length;
+
+        const monthlyPoints = recentUploads * 10 + dlRecent + ratingRecent * 2;
+        const allTimePoints = uploadCount * 10 + dlAll + featuredCount * 5 + ratingAll * 2;
+
+        // Rank (non-admins only)
+        const lbData = lbResult as { data: unknown };
+        const sorted = ([...(Array.isArray(lbData?.data) ? lbData.data : [])] as { user_id: string; monthly_points: number }[])
+          .sort((a, b) => b.monthly_points - a.monthly_points);
+        const idx = sorted.findIndex((e) => e.user_id === user.id);
+
+        setStats({
+          monthly_points:     monthlyPoints,
+          all_time_points:    allTimePoints,
+          upload_count:       uploadCount,
+          downloads_received: dlAll,
+          ratings_received:   ratingAll,
+          rank:               idx !== -1 ? idx + 1 : null,
         });
-      } else {
-        setStats({ all_time_points: 0, monthly_points: 0, upload_count: 0, downloads_received: 0, ratings_received: 0, rank: null });
-      }
-    });
+      });
   }, [user]);
 
   const save = async () => {
