@@ -283,7 +283,7 @@ function ContributePage() {
   };
 
   useEffect(() => {
-    if (!loading && !user) navigate({ to: "/auth", search: { redirect: "/contribute" } });
+    // No redirect — guests can view the leaderboard; they'll be prompted to sign in inline
   }, [user, loading, navigate]);
 
   const onSubmit = async (values: FormValues) => {
@@ -340,7 +340,7 @@ function ContributePage() {
     }
   };
 
-  if (loading || !user) return <div className="min-h-screen bg-background"><Header /></div>;
+  if (loading) return <div className="min-h-screen bg-background"><Header /></div>;
 
   return (
     <div className="min-h-screen bg-background">
@@ -351,10 +351,13 @@ function ContributePage() {
           Contribute a <span className="italic-serif text-gradient-primary">resource</span>
         </h1>
         <p className="mt-3 text-muted-foreground">
-          Uploads are published instantly under your name{isAdmin && <span className="text-mint"> (or as Admin, since you have admin rights)</span>}.
+          {user
+            ? <>Uploads are published instantly under your name{isAdmin && <span className="text-mint"> (or as Admin, since you have admin rights)</span>}.</>
+            : "Share your notes, PPTs, or lab files and climb the leaderboard."
+          }
         </p>
 
-        {/* Points reminder */}
+        {/* Points reminder — shown to everyone */}
         <div className="mt-6 flex items-center gap-3 rounded-xl border border-mint/20 bg-mint/5 px-4 py-3 text-sm">
           <Star className="h-4 w-4 text-mint shrink-0" />
           <span className="text-muted-foreground">
@@ -364,6 +367,24 @@ function ContributePage() {
           </span>
         </div>
 
+        {/* Guest sign-in card OR upload form */}
+        {!user ? (
+          <div className="mt-10 rounded-2xl border border-border/60 bg-card/60 p-10 text-center">
+            <Trophy className="h-12 w-12 mx-auto text-mint/60 mb-4" />
+            <h2 className="font-serif text-2xl text-foreground mb-2">Join the leaderboard</h2>
+            <p className="text-muted-foreground text-sm mb-6">
+              Sign in to upload resources, earn points, and compete with contributors from your branch.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <Button asChild className="bg-gradient-primary text-primary-foreground hover:opacity-90 h-11 px-6">
+                <Link to="/auth" search={{ redirect: "/contribute" }}>Sign in to contribute</Link>
+              </Button>
+              <Button asChild variant="outline" className="h-11 border-border/60">
+                <Link to="/browse">Browse resources</Link>
+              </Button>
+            </div>
+          </div>
+        ) : (
         <form onSubmit={form.handleSubmit(onSubmit)} className="mt-10 space-y-6">
           <div>
             <Label htmlFor="title">Title</Label>
@@ -466,7 +487,9 @@ function ContributePage() {
           </p>
         </form>
 
-        {/* ── LEADERBOARD ── */}
+        )} {/* end !user / user conditional */}
+
+        {/* ── LEADERBOARD — visible to everyone, including guests ── */}
         <Leaderboard />
       </div>
       <Footer />
