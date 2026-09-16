@@ -81,8 +81,7 @@ function Leaderboard() {
   const load = async (branch?: string) => {
     setEntries(null);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any).rpc("get_leaderboard", {
+      const { data, error } = await supabase.rpc("get_leaderboard", {
         p_branch: branch || null,
         p_limit: 50,
       });
@@ -312,15 +311,31 @@ function ContributePage() {
         xhr.setRequestHeader("x-upsert", "false");
         xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
         xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 90));
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 85));
         };
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) { setUploadProgress(90); resolve(); }
+          if (xhr.status >= 200 && xhr.status < 300) { setUploadProgress(85); resolve(); }
           else reject(new Error(`Upload failed (${xhr.status}): ${xhr.responseText}`));
         };
         xhr.onerror = () => reject(new Error("Network error during upload"));
         xhr.send(file);
       });
+
+      // ── Server-side validation (extension, size, magic bytes) ──────────────
+      // The API route verifies the file and deletes it from Storage if it fails.
+      setUploadProgress(90);
+      const validationRes = await fetch("/api/validate-upload", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({ filePath: path, fileName: file.name, fileSize: file.size }),
+      });
+      if (!validationRes.ok) {
+        const { error: valErr } = await validationRes.json().catch(() => ({ error: "Validation failed" }));
+        throw new Error(valErr ?? "File validation failed. Please check the file type and size.");
+      }
 
       setUploadProgress(95);
       const { data: inserted, error: insErr } = await supabase.from("resources").insert({

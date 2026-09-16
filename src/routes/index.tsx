@@ -27,13 +27,17 @@ function LandingPage() {
   const [fetchId, setFetchId] = useState(0);
 
   const fetchStats = async () => {
-    const [{ count: rc }, { data: dl }] = await Promise.all([
-      supabase.from("resources").select("*", { count: "exact", head: true }),
-      supabase.from("resources").select("download_count"),
-    ]);
-    const totalDl = (dl ?? []).reduce((a, r) => a + (r.download_count ?? 0), 0);
-    setStats({ resources: rc ?? 0, downloads: totalDl });
-    setFetchId((n) => n + 1);
+    // Single server-side aggregate — no full row scan in the browser
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const { data } = await (supabase as any).rpc("get_platform_stats");
+    const row = Array.isArray(data) ? data[0] : data;
+    if (row) {
+      setStats({
+        resources: Number(row.total_resources ?? 0),
+        downloads: Number(row.total_downloads ?? 0),
+      });
+      setFetchId((n) => n + 1);
+    }
   };
 
   useEffect(() => {

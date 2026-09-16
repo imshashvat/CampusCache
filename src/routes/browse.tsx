@@ -49,23 +49,37 @@ interface Resource {
   is_admin_upload: boolean;
   is_featured: boolean;
   download_count: number;
+  avg_rating: number;
   created_at: string;
   uploaded_by: string | null;
   shared_branches?: string[] | null;
   profiles?: { full_name: string | null } | null;
 }
 
+/** How many resources to load per page */
+const PAGE_SIZE = 24;
+
+/**
+ * Opaque cursor — encodes the last-seen sort-column value and id so we can do
+ * efficient keyset (cursor) pagination without offset drift.
+ */
+type PageCursor = { val: string | number; id: string };
+
 function BrowsePage() {
   const search = Route.useSearch();
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
+
+  // Accumulated resource list (cursor pagination appends to this)
   const [resources, setResources] = useState<Resource[] | null>(null);
   const [totalCount, setTotalCount] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [cursor, setCursor] = useState<PageCursor | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   const [subjects, setSubjects] = useState<string[]>([]);
   const [search_q, setQ] = useState(search.q ?? "");
   const [filterOpen, setFilterOpen] = useState(false);
-  // avg ratings keyed by resource_id
-  const [avgRatings, setAvgRatings] = useState<Record<string, number>>({});
 
   useEffect(() => { setQ(search.q ?? ""); }, [search.q]);
 
@@ -83,15 +97,29 @@ function BrowsePage() {
     })();
   }, []);
 
+  // When filters / sort change, reset pagination and start fresh
   useEffect(() => {
-    let cancelled = false;
+    setCursor(null);
+    setResources(null);
+    setHasMore(false);
+    setTotalCount(null);
+  }, [search.branch, search.year, search.sem, search.type, search.subject, search.q, search.sort]);
 
+  // Determine sort column name from current sort option
+  const sortCol =
+    search.sort === "popular" ? "download_count"
+    : search.sort === "rating" ? "avg_rating"
+    : "created_at";
+
+  const fetchPage = async (pageCursor: PageCursor | null, cancelled: { current: boolean }) => {
     const runQuery = async (useSharedBranches: boolean) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let q: any = supabase
         .from("resources")
-        .select("*", { count: "exact" })
-        .order(search.sort === "popular" ? "download_count" : "created_at", { ascending: false });
+        .select("*", pageCursor ? {} : { count: "exact" })
+        .order(sortCol, { ascending: false })
+        // Secondary sort on id for stable keyset pagination
+        .order("id", { ascending: false });
 
       if (search.branch) {
         if (useSharedBranches) {
@@ -104,60 +132,85 @@ function BrowsePage() {
       if (search.sem) q = q.eq("semester", search.sem);
       if (search.type) q = q.eq("file_type", search.type);
       if (search.subject) q = q.eq("subject", search.subject);
-      if (search.q) q = q.or(`title.ilike.%${search.q}%,subject.ilike.%${search.q}%,description.ilike.%${search.q}%`);
+      if (search.q)
+        q = q.or(`title.ilike.%${search.q}%,subject.ilike.%${search.q}%,description.ilike.%${search.q}%`);
 
-      return q.limit(60) as Promise<{ data: unknown[] | null; error: { code?: string; message?: string } | null; count: number | null }>;
+      // Keyset condition — only applied when we have a cursor (page 2+)
+      if (pageCursor) {
+        // Return rows where (sort_col, id) is strictly less than the cursor values
+        // using PostgREST's column ordering filter: lt for numeric/timestamp columns
+        q = q
+          .or(
+            `${sortCol}.lt.${pageCursor.val},and(${sortCol}.eq.${pageCursor.val},id.lt.${pageCursor.id})`
+          );
+      }
+
+      return q.limit(PAGE_SIZE) as Promise<{
+        data: unknown[] | null;
+        error: { code?: string; message?: string } | null;
+        count: number | null;
+      }>;
     };
 
+    let { data, error, count } = await runQuery(true);
+    if (error && (error.code === "42703" || error.message?.toLowerCase().includes("shared_branches"))) {
+      ({ data, error, count } = await runQuery(false));
+    }
+    if (error) throw error;
+    return { data: (data ?? []) as Resource[], count };
+  };
+
+  // Initial load (cursor === null after filter/sort reset)
+  useEffect(() => {
+    if (resources !== null) return; // already loaded or loading-more is in progress
+    let cancelled = { current: false };
+
     (async () => {
-      setResources(null);
-      setTotalCount(null);
       try {
-        // Try with shared_branches (works after SQL migration)
-        let { data, error, count } = await runQuery(true);
-
-        // If shared_branches column doesn't exist yet, fall back to simple branch filter
-        if (error && (error.code === "42703" || error.message?.toLowerCase().includes("shared_branches"))) {
-          ({ data, error, count } = await runQuery(false));
-        }
-
-        if (error) throw error;
-        if (cancelled) return;
-        const hydratedResources = await attachUploaderProfiles((data as unknown as Resource[]) ?? []);
-        if (!cancelled) {
-          setResources(hydratedResources);
-          setTotalCount(count ?? hydratedResources.length);
+        const { data, count } = await fetchPage(null, cancelled);
+        if (cancelled.current) return;
+        const hydrated = await attachUploaderProfiles(data);
+        if (cancelled.current) return;
+        setResources(hydrated);
+        setTotalCount(count ?? hydrated.length);
+        setHasMore(data.length === PAGE_SIZE);
+        if (data.length > 0) {
+          const last = data[data.length - 1];
+          setCursor({ val: (last as Record<string, unknown>)[sortCol] as string | number, id: last.id });
         }
       } catch (err) {
         console.error("Failed to load resources:", err);
-        if (!cancelled) setResources([]);
+        if (!cancelled.current) setResources([]);
         toast.error("Failed to load resources. Please check your connection.");
       }
     })();
-    return () => { cancelled = true; };
-  }, [search.branch, search.year, search.sem, search.type, search.subject, search.q, search.sort]);
 
-  // Load avg ratings in bulk whenever the resource list changes
-  useEffect(() => {
-    if (!resources || resources.length === 0) { setAvgRatings({}); return; }
-    const ids = resources.map((r) => r.id);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (supabase as any)
-      .from("ratings")
-      .select("resource_id, stars")
-      .in("resource_id", ids)
-      .then(({ data }: { data: { resource_id: string; stars: number }[] | null }) => {
-        const map: Record<string, { sum: number; count: number }> = {};
-        (data ?? []).forEach(({ resource_id, stars }) => {
-          if (!map[resource_id]) map[resource_id] = { sum: 0, count: 0 };
-          map[resource_id].sum += stars;
-          map[resource_id].count += 1;
-        });
-        const avgMap: Record<string, number> = {};
-        Object.entries(map).forEach(([id, { sum, count }]) => { avgMap[id] = sum / count; });
-        setAvgRatings(avgMap);
-      });
+    return () => { cancelled.current = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resources]);
+
+  const loadMore = async () => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    const cancelled = { current: false };
+    try {
+      const { data } = await fetchPage(cursor, cancelled);
+      const hydrated = await attachUploaderProfiles(data);
+      setResources((prev) => [...(prev ?? []), ...hydrated]);
+      setHasMore(data.length === PAGE_SIZE);
+      if (data.length > 0) {
+        const last = data[data.length - 1];
+        setCursor({ val: (last as Record<string, unknown>)[sortCol] as string | number, id: last.id });
+      } else {
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error("Load more failed:", err);
+      toast.error("Failed to load more resources.");
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const update = (patch: Partial<typeof search>) => {
     navigate({ to: "/browse", search: { ...search, ...patch } });
@@ -333,20 +386,32 @@ function BrowsePage() {
             )}
 
             {resources && resources.length > 0 && (
-              <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
-                {(search.sort === "rating"
-                  ? [...resources].sort((a, b) => (avgRatings[b.id] ?? 0) - (avgRatings[a.id] ?? 0))
-                  : resources
-                ).map((r) => (
-                  <ResourceCard
-                    key={r.id}
-                    r={r}
-                    avgRating={avgRatings[r.id]}
-                    canDelete={isAdmin}
-                    onDelete={(id) => setResources((prev) => (prev ?? []).filter((x) => x.id !== id))}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+                  {resources.map((r) => (
+                    <ResourceCard
+                      key={r.id}
+                      r={r}
+                      canDelete={isAdmin}
+                      onDelete={(id) => setResources((prev) => (prev ?? []).filter((x) => x.id !== id))}
+                    />
+                  ))}
+                </div>
+
+                {/* Load More — shown when the server returned a full page */}
+                {hasMore && (
+                  <div className="mt-8 flex justify-center">
+                    <Button
+                      variant="outline"
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      className="border-mint/40 text-foreground hover:border-mint hover:bg-accent px-8"
+                    >
+                      {loadingMore ? "Loading\u2026" : `Load ${PAGE_SIZE} more`}
+                    </Button>
+                  </div>
+                )}
+              </>
             )}
           </main>
         </div>
@@ -407,7 +472,7 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
   );
 }
 
-function ResourceCard({ r, avgRating, canDelete, onDelete }: { r: Resource; avgRating?: number; canDelete: boolean; onDelete: (id: string) => void }) {
+function ResourceCard({ r, canDelete, onDelete }: { r: Resource; canDelete: boolean; onDelete: (id: string) => void }) {
   const color = fileTypeColor(r.file_type);
   const [deleting, setDeleting] = useState(false);
   const isShared = r.shared_branches && r.shared_branches.length > 0;
@@ -490,10 +555,10 @@ function ResourceCard({ r, avgRating, canDelete, onDelete }: { r: Resource; avgR
           {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {avgRating !== undefined && (
+          {r.avg_rating > 0 && (
             <span className="flex items-center gap-0.5 text-amber-400">
               <Star className="h-3 w-3 fill-amber-400" />
-              <span className="font-mono">{avgRating.toFixed(1)}</span>
+              <span className="font-mono">{r.avg_rating.toFixed(1)}</span>
             </span>
           )}
           <span className="flex items-center gap-1 text-mint">

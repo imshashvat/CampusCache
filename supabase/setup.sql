@@ -1,7 +1,12 @@
 -- ============================================================
 -- CampusCache — Complete Database Setup Script (Safe/Idempotent)
--- Run this in: Supabase Dashboard → SQL Editor → New query → Run
--- Safe to re-run even if some objects already exist
+-- ⚠️  HISTORICAL REFERENCE ONLY — do not run this to set up a new environment.
+--
+-- As of migration 20260916000001 through 20260916000007, the full schema
+-- history is reproducible by replaying supabase/migrations/ alone.
+-- Use: supabase db reset  (or apply migrations in order in the SQL Editor)
+--
+-- This file is kept for reference and safe re-runs on existing DBs only.
 -- ============================================================
 
 -- ===== ENUMS (safe re-run) =====

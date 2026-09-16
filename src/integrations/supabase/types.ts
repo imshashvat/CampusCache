@@ -43,6 +43,43 @@ export type Database = {
           },
         ]
       }
+      ratings: {
+        Row: {
+          id: string
+          resource_id: string
+          user_id: string
+          stars: number
+          review: string | null
+          tags: string[]
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          resource_id: string
+          user_id: string
+          stars: number
+          review?: string | null
+          tags?: string[]
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          stars?: number
+          review?: string | null
+          tags?: string[]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ratings_resource_id_fkey"
+            columns: ["resource_id"]
+            isOneToOne: false
+            referencedRelation: "resources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -75,6 +112,7 @@ export type Database = {
       }
       resources: {
         Row: {
+          avg_rating: number
           branch: string
           created_at: string
           description: string | null
@@ -86,6 +124,7 @@ export type Database = {
           is_admin_upload: boolean
           is_featured: boolean
           semester: number
+          shared_branches: string[] | null
           subject: string | null
           title: string
           updated_at: string
@@ -93,6 +132,7 @@ export type Database = {
           year: number
         }
         Insert: {
+          avg_rating?: number
           branch: string
           created_at?: string
           description?: string | null
@@ -104,6 +144,7 @@ export type Database = {
           is_admin_upload?: boolean
           is_featured?: boolean
           semester: number
+          shared_branches?: string[] | null
           subject?: string | null
           title: string
           updated_at?: string
@@ -111,6 +152,7 @@ export type Database = {
           year: number
         }
         Update: {
+          avg_rating?: number
           branch?: string
           created_at?: string
           description?: string | null
@@ -122,6 +164,7 @@ export type Database = {
           is_admin_upload?: boolean
           is_featured?: boolean
           semester?: number
+          shared_branches?: string[] | null
           subject?: string | null
           title?: string
           updated_at?: string
@@ -156,6 +199,41 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_leaderboard: {
+        Args: {
+          p_branch?: string | null
+          p_limit?: number
+        }
+        Returns: Array<{
+          user_id: string
+          full_name: string | null
+          branch: string | null
+          monthly_points: number
+          all_time_points: number
+          upload_count: number
+          downloads_received: number
+          featured_count: number
+          ratings_received: number
+        }>
+      }
+      get_own_stats: {
+        Args: { p_user_id: string }
+        Returns: Array<{
+          monthly_points: number
+          all_time_points: number
+          upload_count: number
+          downloads_received: number
+          ratings_received: number
+        }>
+      }
+      get_platform_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: Array<{
+          total_resources: number
+          total_downloads: number
+          total_uploaders: number
+        }>
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

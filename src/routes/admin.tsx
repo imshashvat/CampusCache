@@ -55,19 +55,21 @@ function AdminPage() {
   }, [user, isAdmin, loading, navigate]);
 
   const reload = async () => {
-    const [r, u, roles, dl] = await Promise.all([
+    const [r, u, roles, platformStats] = await Promise.all([
       supabase.from("resources").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("profiles").select("id,full_name,created_at").order("created_at", { ascending: false }),
       supabase.from("user_roles").select("user_id,role").eq("role", "admin"),
-      supabase.from("resources").select("download_count"),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (supabase as any).rpc("get_platform_stats"),
     ]);
     setResources(await attachUploaderProfiles((r.data as unknown as AdminResource[]) ?? []));
     setUsers((u.data as AdminUser[]) ?? []);
     setAdminIds(new Set((roles.data ?? []).map((x) => x.user_id)));
+    const statsRow = Array.isArray(platformStats.data) ? platformStats.data[0] : platformStats.data;
     setStats({
-      resources: r.data?.length ?? 0,
+      resources: Number(statsRow?.total_resources ?? r.data?.length ?? 0),
       users: u.data?.length ?? 0,
-      downloads: (dl.data ?? []).reduce((a, x) => a + (x.download_count ?? 0), 0),
+      downloads: Number(statsRow?.total_downloads ?? 0),
     });
   };
 

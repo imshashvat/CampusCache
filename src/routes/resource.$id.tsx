@@ -146,9 +146,8 @@ function ResourceDetail() {
     if (!id) return;
     (async () => {
       const [{ data: allRatings }, canRateResult, myRatingResult] = await Promise.all([
-        // Community ratings — cast to any until migration adds 'ratings' to generated types
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (supabase as any).from("ratings").select("stars, tags, user_id").eq("resource_id", id),
+        // Community ratings
+        supabase.from("ratings").select("stars, tags, user_id").eq("resource_id", id),
         // Has user downloaded?
         user
           ? supabase.from("downloads").select("id", { count: "exact", head: true })
@@ -156,8 +155,7 @@ function ResourceDetail() {
           : Promise.resolve({ count: 0 }),
         // User's existing rating
         user
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ? (supabase as any).from("ratings").select("stars, tags, review").eq("resource_id", id).eq("user_id", user.id).maybeSingle()
+          ? supabase.from("ratings").select("stars, tags, review").eq("resource_id", id).eq("user_id", user.id).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
 
@@ -299,8 +297,7 @@ function ResourceDetail() {
     if (ratingStars === 0) { toast.error("Please pick a star rating"); return; }
     setSubmittingRating(true);
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any).from("ratings").upsert({
+      const { error } = await supabase.from("ratings").upsert({
         resource_id: r.id,
         user_id: user.id,
         stars: ratingStars,
@@ -310,8 +307,7 @@ function ResourceDetail() {
       if (error) throw error;
 
       // Refresh community rating
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: allRatings } = await (supabase as any).from("ratings").select("stars, tags").eq("resource_id", r.id);
+      const { data: allRatings } = await supabase.from("ratings").select("stars, tags").eq("resource_id", r.id);
       const rList = (allRatings ?? []) as { stars: number; tags: string[] }[];
       const avg = rList.reduce((a, x) => a + x.stars, 0) / rList.length;
       const tagCounts: Record<string, number> = {};
