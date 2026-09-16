@@ -29,33 +29,29 @@ LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
-DECLARE
-  _already_downloaded BOOLEAN := false;
 BEGIN
   IF auth.uid() IS NOT NULL THEN
-    -- Check whether this user already downloaded this resource in the
-    -- last 24 hours; if so, skip the counter increment (still log the row)
-    SELECT EXISTS (
+    -- Only increment download_count if the user has NOT downloaded this
+    -- resource in the last 24 hours (deduplication / anti-farming).
+    IF NOT EXISTS (
       SELECT 1
       FROM public.downloads
       WHERE resource_id = _resource_id
         AND user_id     = auth.uid()
         AND created_at >= now() - interval '24 hours'
-    ) INTO _already_downloaded;
-
-    IF NOT _already_downloaded THEN
+    ) THEN
       UPDATE public.resources
         SET download_count = download_count + 1
         WHERE id = _resource_id;
     END IF;
 
-    -- Always record the download event for analytics
+    -- Always record the download event for analytics regardless of dedup.
     INSERT INTO public.downloads (resource_id, user_id)
     VALUES (_resource_id, auth.uid());
 
   ELSE
-    -- Guest: record the analytics row but do NOT touch download_count
-    -- (guest downloads are excluded from leaderboard by get_leaderboard())
+    -- Guest: record the analytics row but do NOT touch download_count.
+    -- Guest downloads are excluded from leaderboard by get_leaderboard().
     INSERT INTO public.downloads (resource_id, user_id)
     VALUES (_resource_id, NULL);
   END IF;
