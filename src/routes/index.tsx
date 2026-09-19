@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useRouter } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, BookOpen, Download, Sparkles, Upload, Users, FileText, GraduationCap, ShieldCheck, Layers, Zap } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -22,33 +22,32 @@ export const Route = createFileRoute("/")({
 
 function LandingPage() {
   const router = useRouter();
-  const [stats, setStats] = useState({ resources: 0, downloads: 0 });
-  // Bumped after every successful fetch so CountUp re-animates with the real value
-  const [fetchId, setFetchId] = useState(0);
 
-  const fetchStats = async () => {
-    // Single server-side aggregate — no full row scan in the browser
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data } = await (supabase as any).rpc("get_platform_stats");
-    const row = Array.isArray(data) ? data[0] : data;
-    if (row) {
-      setStats({
-        resources: Number(row.total_resources ?? 0),
-        downloads: Number(row.total_downloads ?? 0),
-      });
-      setFetchId((n) => n + 1);
-    }
-  };
+  // useQuery handles caching, dedup, and refetchOnWindowFocus automatically.
+  // The queryKey includes the current pathname so navigating back to "/"
+  // re-uses the cached result instead of re-fetching from scratch.
+  const { data: statsData, error: statsQueryError, dataUpdatedAt } = useQuery({
+    queryKey: ["platform-stats", router.history.location.pathname],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc("get_platform_stats");
+      if (error) {
+        console.warn("[CampusCache] get_platform_stats RPC failed:", error.message);
+        throw error;
+      }
+      const row = Array.isArray(data) ? data[0] : data;
+      return {
+        resources: Number(row?.total_resources ?? 0),
+        downloads: Number(row?.total_downloads ?? 0),
+      };
+    },
+    // Refetch on every navigation to "/" and on tab focus (handled by QueryClient defaults)
+    staleTime: 0,
+  });
 
-  useEffect(() => {
-    fetchStats();
-    // Re-fetch whenever browser tab becomes visible again
-    const onVisible = () => { if (document.visibilityState === "visible") fetchStats(); };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  // Re-run whenever the router navigates to this page
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router.history.location.href]);
+  const statsError = !!statsQueryError;
+  const stats = statsData ?? { resources: 0, downloads: 0 };
+  // dataUpdatedAt bumps on every successful fetch — used as the CountUp re-animation key
+  const fetchId = dataUpdatedAt;
 
   return (
     <div className="min-h-screen bg-background overflow-x-hidden">
@@ -93,15 +92,17 @@ function LandingPage() {
           {/* Stats */}
           <div className="mt-24 grid grid-cols-2 sm:grid-cols-4 gap-px bg-border/50 rounded-2xl overflow-hidden border border-border/60 max-w-4xl mx-auto backdrop-blur">
             {[
-              { label: "Resources", value: stats.resources, suffix: "+" },
-              { label: "Downloads", value: stats.downloads, suffix: "+" },
-              { label: "Branches", value: BRANCHES.length, suffix: "" },
-              { label: "Free, always", value: 100, suffix: "%" },
+              { label: "Resources", value: stats.resources, suffix: "+", dynamic: true },
+              { label: "Downloads", value: stats.downloads, suffix: "+", dynamic: true },
+              { label: "Branches", value: BRANCHES.length, suffix: "", dynamic: false },
+              { label: "Free, always", value: 100, suffix: "%", dynamic: false },
             ].map((s) => (
               <div key={s.label} className="bg-card/70 p-6 sm:p-8">
                 <div className="font-serif text-4xl sm:text-5xl text-gradient-primary">
                   {/* key={fetchId} forces CountUp to re-animate on every stats refresh */}
-                  <CountUp key={`${s.label}-${fetchId}`} end={s.value} suffix={s.suffix} />
+                  {statsError && s.dynamic
+                    ? <span title="Stats temporarily unavailable">—</span>
+                    : <CountUp key={`${s.label}-${fetchId}`} end={s.value} suffix={s.suffix} />}
                 </div>
                 <div className="mt-2 text-[10px] uppercase tracking-[0.22em] font-mono text-muted-foreground">{s.label}</div>
               </div>

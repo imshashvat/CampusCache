@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Download, FileText, Trash2, Trophy, Star, Upload, TrendingUp } from "lucide-react";
+import { Download, FileText, Trash2, Trophy, Star, Upload, TrendingUp, Bookmark } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -20,6 +20,12 @@ export const Route = createFileRoute("/profile")({
 
 interface MyResource {
   id: string; title: string; file_type: string; download_count: number; created_at: string; file_path: string;
+}
+
+interface BookmarkedResource {
+  resource_id: string;
+  created_at: string;
+  resources: { id: string; title: string; file_type: string; download_count: number } | null;
 }
 
 interface ContribStats {
@@ -48,6 +54,8 @@ function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [mine, setMine] = useState<MyResource[]>([]);
   const [stats, setStats] = useState<ContribStats | null>(null);
+  const [bookmarks, setBookmarks] = useState<BookmarkedResource[]>([]);
+  const [bookmarksLoading, setBookmarksLoading] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) navigate({ to: "/auth", search: { redirect: "/profile" } });
@@ -80,27 +88,22 @@ function ProfilePage() {
         const [dlAllResult, dlRecentResult, ratingAllResult, ratingRecentResult, lbResult] = await Promise.all([
           // All authenticated downloads of user's files
           resourceIds.length > 0
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ? (supabase as any).from("downloads").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).not("user_id", "is", null)
+            ? supabase.from("downloads").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).not("user_id", "is", null)
             : Promise.resolve({ count: 0 }),
           // Recent (30d) authenticated downloads
           resourceIds.length > 0
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ? (supabase as any).from("downloads").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).not("user_id", "is", null).gte("created_at", thirtyDaysAgo)
+            ? supabase.from("downloads").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).not("user_id", "is", null).gte("created_at", thirtyDaysAgo)
             : Promise.resolve({ count: 0 }),
           // All ratings on user's files
           resourceIds.length > 0
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ? (supabase as any).from("ratings").select("*", { count: "exact", head: true }).in("resource_id", resourceIds)
+            ? supabase.from("ratings").select("*", { count: "exact", head: true }).in("resource_id", resourceIds)
             : Promise.resolve({ count: 0 }),
           // Recent (30d) ratings
           resourceIds.length > 0
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            ? (supabase as any).from("ratings").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).gte("created_at", thirtyDaysAgo)
+            ? supabase.from("ratings").select("*", { count: "exact", head: true }).in("resource_id", resourceIds).gte("created_at", thirtyDaysAgo)
             : Promise.resolve({ count: 0 }),
           // Leaderboard for rank
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (supabase as any).rpc("get_leaderboard", { p_branch: null, p_limit: 200 }),
+          supabase.rpc("get_leaderboard", { p_branch: null, p_limit: 200 }),
         ]);
 
         const uploadCount     = myRes.length;
@@ -129,6 +132,16 @@ function ProfilePage() {
           rank:               idx !== -1 ? idx + 1 : null,
         });
       });
+
+    // Load bookmarks
+    setBookmarksLoading(true);
+    supabase
+      .from("bookmarks")
+      .select("resource_id, created_at, resources(id, title, file_type, download_count)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .then(({ data: bmData }) => { setBookmarks((bmData ?? []) as any); setBookmarksLoading(false); });
   }, [user]);
 
   const save = async () => {
@@ -268,6 +281,41 @@ function ProfilePage() {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* ── SAVED RESOURCES ── */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 mb-6">
+            <Bookmark className="h-5 w-5 text-mint" />
+            <h2 className="font-serif text-3xl">Saved resources</h2>
+          </div>
+          {bookmarksLoading ? (
+            <div className="text-sm text-muted-foreground">Loading...</div>
+          ) : bookmarks.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-border/60 bg-card/40 p-12 text-center">
+              <Bookmark className="h-10 w-10 mx-auto text-mint/60 mb-4" />
+              <p className="font-serif text-xl">No saved resources yet</p>
+              <p className="mt-2 text-sm text-muted-foreground">Browse and bookmark ones you like.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {bookmarks.map((bm) => {
+                const res = bm.resources;
+                if (!res) return null;
+                return (
+                  <div key={bm.resource_id} className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card/60 p-4">
+                    <Link to="/resource/$id" params={{ id: res.id }} className="flex-1 min-w-0">
+                      <div className="font-medium text-foreground truncate hover:text-mint">{res.title}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">
+                        {fileTypeLabel(res.file_type)} · saved {formatDistanceToNow(new Date(bm.created_at), { addSuffix: true })}
+                      </div>
+                    </Link>
+                    <div className="text-xs text-mint flex items-center gap-1"><Download className="h-3 w-3" /> {res.download_count}</div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

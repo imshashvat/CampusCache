@@ -30,6 +30,8 @@ const schema = z.object({
   year: z.number().int().min(1).max(4),
   semester: z.number().int().min(1).max(8),
   subject: z.string().trim().max(80).optional(),
+  faculty_name: z.string().trim().max(80).optional(),
+  section: z.string().trim().max(20).optional(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -417,15 +419,26 @@ function ContributePage() {
 
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <Label>File type</Label>
+              <Label htmlFor="file_type">File type</Label>
               <Select defaultValue="notes" onValueChange={(v) => form.setValue("file_type", v as never)}>
                 <SelectTrigger className="mt-2 bg-card"><SelectValue /></SelectTrigger>
                 <SelectContent>{FILE_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             <div>
-              <Label htmlFor="subject">Subject</Label>
+              <Label htmlFor="subject">Subject (optional)</Label>
               <Input id="subject" {...form.register("subject")} placeholder="e.g. Operating Systems" className="mt-2 bg-card" />
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="faculty_name">Faculty / Professor (optional)</Label>
+              <Input id="faculty_name" {...form.register("faculty_name")} placeholder="e.g. Dr. Sharma" className="mt-2 bg-card" />
+            </div>
+            <div>
+              <Label htmlFor="section">Section (optional)</Label>
+              <Input id="section" {...form.register("section")} placeholder="e.g. A, B1, CSE-3" className="mt-2 bg-card" />
             </div>
           </div>
 

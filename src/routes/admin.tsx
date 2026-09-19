@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Trash2, Star, FileText, Users, Download, Pin, Clock } from "lucide-react";
+import { Trash2, Star, FileText, Users, Download, Pin, Clock, Flag } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -38,6 +38,17 @@ interface DownloadEvent {
   downloader_id: string | null;
 }
 
+interface ReportEvent {
+  id: string;
+  created_at: string;
+  resource_id: string;
+  resource_title: string;
+  reporter_name: string | null;
+  reason: string;
+  details: string | null;
+  status: string;
+}
+
 function AdminPage() {
   const { user, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
@@ -45,10 +56,13 @@ function AdminPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [adminIds, setAdminIds] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState({ resources: 0, downloads: 0, users: 0 });
+  const [statsError, setStatsError] = useState(false);
   const [search, setSearch] = useState("");
   const [downloadEvents, setDownloadEvents] = useState<DownloadEvent[]>([]);
   const [dlSearch, setDlSearch] = useState("");
   const [dlLoading, setDlLoading] = useState(false);
+  const [reports, setReports] = useState<ReportEvent[]>([]);
+  const [reportsLoading, setReportsLoading] = useState(false);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) navigate({ to: "/" });
@@ -59,18 +73,24 @@ function AdminPage() {
       supabase.from("resources").select("*").order("created_at", { ascending: false }).limit(200),
       supabase.from("profiles").select("id,full_name,created_at").order("created_at", { ascending: false }),
       supabase.from("user_roles").select("user_id,role").eq("role", "admin"),
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (supabase as any).rpc("get_platform_stats"),
+      supabase.rpc("get_platform_stats"),
     ]);
     setResources(await attachUploaderProfiles((r.data as unknown as AdminResource[]) ?? []));
     setUsers((u.data as AdminUser[]) ?? []);
     setAdminIds(new Set((roles.data ?? []).map((x) => x.user_id)));
-    const statsRow = Array.isArray(platformStats.data) ? platformStats.data[0] : platformStats.data;
-    setStats({
-      resources: Number(statsRow?.total_resources ?? r.data?.length ?? 0),
-      users: u.data?.length ?? 0,
-      downloads: Number(statsRow?.total_downloads ?? 0),
-    });
+    if (platformStats.error) {
+      console.warn("[CampusCache] get_platform_stats RPC failed:", platformStats.error.message);
+      setStatsError(true);
+      setStats({ resources: r.data?.length ?? 0, users: u.data?.length ?? 0, downloads: 0 });
+    } else {
+      setStatsError(false);
+      const statsRow = Array.isArray(platformStats.data) ? platformStats.data[0] : platformStats.data;
+      setStats({
+        resources: Number(statsRow?.total_resources ?? r.data?.length ?? 0),
+        users: u.data?.length ?? 0,
+        downloads: Number(statsRow?.total_downloads ?? 0),
+      });
+    }
   };
 
   const loadDownloadTimeline = async () => {
@@ -122,12 +142,43 @@ function AdminPage() {
     }
   };
 
-  useEffect(() => { if (isAdmin) { reload(); loadDownloadTimeline(); } }, [isAdmin]);
+  useEffect(() => { if (isAdmin) { reload(); loadDownloadTimeline(); loadReports(); } }, [isAdmin]);
 
   const togglePin = async (r: AdminResource) => {
     await supabase.from("resources").update({ is_featured: !r.is_featured }).eq("id", r.id);
     toast.success(r.is_featured ? "Unpinned" : "Featured");
     reload();
+  };
+
+  const loadReports = async () => {
+    setReportsLoading(true);
+    try {
+      const { data, error } = await supabase.from("reports").select("id, created_at, resource_id, reporter_id, reason, details, status").order("created_at", { ascending: false }).limit(200);
+      if (error) throw error;
+      if (!data || data.length === 0) { setReports([]); return; }
+      const resourceIds = [...new Set(data.map((d) => d.resource_id))];
+      const reporterIds = [...new Set(data.map((d) => d.reporter_id).filter(Boolean))] as string[];
+      const [resResult, profileResult] = await Promise.all([
+        supabase.from("resources").select("id, title").in("id", resourceIds),
+        reporterIds.length > 0 ? supabase.from("profiles").select("id, full_name").in("id", reporterIds) : Promise.resolve({ data: [] }),
+      ]);
+      const resMap = new Map((resResult.data ?? []).map((r) => [r.id, r.title]));
+      const profileMap = new Map(((profileResult as { data: { id: string; full_name: string | null }[] | null }).data ?? []).map((p) => [p.id, p.full_name]));
+      setReports(data.map((d) => ({
+        id: d.id, created_at: d.created_at, resource_id: d.resource_id,
+        resource_title: resMap.get(d.resource_id) ?? "Unknown",
+        reporter_name: profileMap.get(d.reporter_id) ?? "Anonymous",
+        reason: d.reason, details: d.details, status: d.status,
+      })));
+    } catch (err) { toast.error("Failed to load reports"); console.error(err); }
+    finally { setReportsLoading(false); }
+  };
+
+  const updateReportStatus = async (reportId: string, status: string) => {
+    const { error } = await supabase.from("reports").update({ status }).eq("id", reportId);
+    if (error) { toast.error(error.message); return; }
+    toast.success(`Report marked ${status}`);
+    setReports((prev) => prev.map((r) => r.id === reportId ? { ...r, status } : r));
   };
 
   const deleteResource = async (r: AdminResource) => {
@@ -169,9 +220,9 @@ function AdminPage() {
         </h1>
 
         <div className="mt-10 grid sm:grid-cols-3 gap-4">
-          <StatTile icon={FileText} label="Resources" value={stats.resources} />
-          <StatTile icon={Download} label="Total downloads" value={stats.downloads} />
-          <StatTile icon={Users} label="Users" value={stats.users} />
+          <StatTile icon={FileText} label="Resources" value={stats.resources} unavailable={statsError} />
+          <StatTile icon={Download} label="Total downloads" value={stats.downloads} unavailable={statsError} />
+          <StatTile icon={Users} label="Users" value={stats.users} unavailable={false} />
         </div>
 
         <Tabs defaultValue="files" className="mt-10">
@@ -180,6 +231,10 @@ function AdminPage() {
             <TabsTrigger value="downloads">
               <Clock className="h-3.5 w-3.5 mr-1.5" />
               Download Timeline
+            </TabsTrigger>
+            <TabsTrigger value="reports">
+              <Flag className="h-3.5 w-3.5 mr-1.5" />
+              Reports {reports.filter((r) => r.status === "pending").length > 0 && <span className="ml-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] flex items-center justify-center font-mono">{reports.filter((r) => r.status === "pending").length}</span>}
             </TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
           </TabsList>
@@ -302,6 +357,66 @@ function AdminPage() {
             )}
           </TabsContent>
 
+          {/* ── REPORTS TAB ── */}
+          <TabsContent value="reports" className="mt-6">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-muted-foreground">{reports.length} report{reports.length !== 1 ? "s" : ""} total · {reports.filter((r) => r.status === "pending").length} pending</p>
+              <Button size="sm" variant="outline" onClick={loadReports} disabled={reportsLoading} className="border-border/60 text-muted-foreground hover:text-mint">
+                <Flag className="h-3.5 w-3.5 mr-1.5" /> {reportsLoading ? "Refreshing..." : "Refresh"}
+              </Button>
+            </div>
+            {reportsLoading ? (
+              <div className="rounded-xl border border-border/60 bg-card/60 p-12 text-center text-muted-foreground text-sm">Loading reports...</div>
+            ) : reports.length === 0 ? (
+              <div className="rounded-xl border border-border/60 bg-card/60 p-12 text-center">
+                <Flag className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
+                <p className="text-muted-foreground text-sm">No reports yet.</p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border/60 bg-card/60 overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="border-b border-border/60 text-xs uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="text-left p-3">Resource</th>
+                      <th className="text-left p-3 hidden sm:table-cell">Reporter</th>
+                      <th className="text-left p-3">Reason</th>
+                      <th className="text-left p-3 hidden md:table-cell">Details</th>
+                      <th className="text-left p-3">Status</th>
+                      <th className="p-3 w-40"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reports.map((rep) => (
+                      <tr key={rep.id} className="border-b border-border/40 hover:bg-accent/20">
+                        <td className="p-3">
+                          <Link to="/resource/$id" params={{ id: rep.resource_id }} className="font-medium hover:text-mint truncate max-w-[150px] block">{rep.resource_title}</Link>
+                        </td>
+                        <td className="p-3 hidden sm:table-cell text-muted-foreground text-xs">{rep.reporter_name}</td>
+                        <td className="p-3 text-xs">{rep.reason}</td>
+                        <td className="p-3 hidden md:table-cell text-muted-foreground text-xs">{rep.details ? rep.details.slice(0, 60) + (rep.details.length > 60 ? "..." : "") : "—"}</td>
+                        <td className="p-3">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${
+                            rep.status === "pending" ? "bg-amber-400/10 text-amber-400 border border-amber-400/30"
+                            : rep.status === "resolved" ? "bg-mint/10 text-mint border border-mint/30"
+                            : "bg-muted-foreground/10 text-muted-foreground border border-border/60"
+                          }`}>{rep.status}</span>
+                        </td>
+                        <td className="p-3 text-right">
+                          {rep.status !== "resolved" && (
+                            <button onClick={() => updateReportStatus(rep.id, "resolved")} className="text-xs text-mint hover:underline mr-2">Resolve</button>
+                          )}
+                          {rep.status !== "dismissed" && (
+                            <button onClick={() => updateReportStatus(rep.id, "dismissed")} className="text-xs text-muted-foreground hover:underline">Dismiss</button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </TabsContent>
+
           {/* ── USERS TAB ── */}
           <TabsContent value="users" className="mt-6">
             <div className="rounded-xl border border-border/60 bg-card/60 overflow-hidden">
@@ -345,13 +460,15 @@ function AdminPage() {
   );
 }
 
-function StatTile({ icon: Icon, label, value }: { icon: typeof FileText; label: string; value: number }) {
+function StatTile({ icon: Icon, label, value, unavailable = false }: { icon: typeof FileText; label: string; value: number; unavailable?: boolean }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/60 p-6">
       <div className="flex items-center gap-3 text-muted-foreground text-xs uppercase tracking-wider">
         <Icon className="h-4 w-4 text-mint" /> {label}
       </div>
-      <div className="mt-3 font-serif text-4xl text-gradient-primary">{value.toLocaleString()}</div>
+      <div className="mt-3 font-serif text-4xl text-gradient-primary">
+        {unavailable ? <span className="text-muted-foreground text-2xl" title="Stats temporarily unavailable">unavailable</span> : value.toLocaleString()}
+      </div>
     </div>
   );
 }

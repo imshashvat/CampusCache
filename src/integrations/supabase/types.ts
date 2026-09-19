@@ -1,4 +1,4 @@
-export type Json =
+﻿export type Json =
   | string
   | number
   | boolean
@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      bookmarks: {
+        Row: {
+          user_id: string
+          resource_id: string
+          created_at: string
+        }
+        Insert: {
+          user_id: string
+          resource_id: string
+          created_at?: string
+        }
+        Update: {
+          user_id?: string
+          resource_id?: string
+          created_at?: string
+        }
+        Relationships: []
+      }
       downloads: {
         Row: {
           created_at: string
@@ -112,7 +130,10 @@ export type Database = {
       }
       resources: {
         Row: {
+          faculty_name: string | null
+          section: string | null
           avg_rating: number
+          rating_count: number
           branch: string
           created_at: string
           description: string | null
@@ -132,6 +153,8 @@ export type Database = {
           year: number
         }
         Insert: {
+          faculty_name?: string | null
+          section?: string | null
           avg_rating?: number
           branch: string
           created_at?: string
@@ -152,6 +175,8 @@ export type Database = {
           year: number
         }
         Update: {
+          faculty_name?: string | null
+          section?: string | null
           avg_rating?: number
           branch?: string
           created_at?: string
@@ -170,6 +195,33 @@ export type Database = {
           updated_at?: string
           uploaded_by?: string | null
           year?: number
+        }
+        Relationships: []
+      }
+      reports: {
+        Row: {
+          id: string
+          resource_id: string
+          reporter_id: string
+          reason: string
+          details: string | null
+          status: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          resource_id: string
+          reporter_id: string
+          reason: string
+          details?: string | null
+          status?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          reason?: string
+          details?: string | null
+          status?: string
         }
         Relationships: []
       }

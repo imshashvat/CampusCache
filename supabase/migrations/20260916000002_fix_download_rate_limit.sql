@@ -1,5 +1,5 @@
 -- ============================================================
--- Migration: Fix download-farming — 24-hour rate-limit per (resource, user)
+-- Migration: Fix download-farming - 24-hour rate-limit per (resource, user)
 -- Commit: item-2/fix-download-rate-limit
 --
 -- Problem:
@@ -19,7 +19,7 @@
 --
 -- Non-admin / unauthenticated access unchanged:
 --   First download by a signed-in student: identical behaviour to today.
---   Guest downloads: identical — row inserted, count not touched.
+--   Guest downloads: identical - row inserted, count not touched.
 --   Only repeated same-user downloads within 24 h are deduplicated.
 -- ============================================================
 

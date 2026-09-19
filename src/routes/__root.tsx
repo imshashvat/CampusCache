@@ -1,7 +1,19 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider } from "@/lib/auth";
 import appCss from "../styles.css?url";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,      // 1 min — cached data is considered fresh
+      gcTime: 300_000,        // 5 min — unused cache entries are kept in memory
+      refetchOnWindowFocus: true,
+      retry: 1,
+    },
+  },
+});
 
 function NotFoundComponent() {
   return (
@@ -68,9 +80,11 @@ function RootShell({ children }: { children: React.ReactNode }) {
 
 function RootComponent() {
   return (
-    <AuthProvider>
-      <Outlet />
-      <Toaster theme="dark" position="top-center" closeButton richColors />
-    </AuthProvider>
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <Outlet />
+        <Toaster theme="dark" position="top-center" closeButton richColors />
+      </AuthProvider>
+    </QueryClientProvider>
   );
 }
