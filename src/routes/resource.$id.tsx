@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import {
   Download, ArrowLeft, FileText, Calendar, User as UserIcon,
@@ -27,10 +27,10 @@ export const Route = createFileRoute("/resource/$id")({
     return resourceWithProfile ?? null;
   },
   head: ({ loaderData }) => {
-    if (!loaderData) return { meta: [{ title: "Resource � CampusCache" }] };
+    if (!loaderData) return { meta: [{ title: "Resource — CampusCache" }] };
     const r = loaderData as Resource;
-    const pageTitle = `${r.title} � CampusCache`;
-    const desc = [r.subject ? `${r.subject} �` : "", `${r.branch} Year ${r.year} Sem ${r.semester}`, r.description ? `. ${r.description.slice(0, 120)}` : ""].filter(Boolean).join(" ").trim();
+    const pageTitle = `${r.title} — CampusCache`;
+    const desc = [r.subject ? `${r.subject} —` : "", `${r.branch} Year ${r.year} Sem ${r.semester}`, r.description ? `. ${r.description.slice(0, 120)}` : ""].filter(Boolean).join(" ").trim();
     return {
       meta: [
         { title: pageTitle },
@@ -203,7 +203,7 @@ function ResourceDetail() {
     if (!r) return;
     setOpening(true);
     const win = window.open("about:blank", "_blank");
-    if (!win) { toast.error("Popup blocked � please allow popups for this site and try again."); setOpening(false); return; }
+    if (!win) { toast.error("Popup blocked — please allow popups for this site and try again."); setOpening(false); return; }
     try {
       const ext = r.file_path.split(".").pop()?.toLowerCase() ?? "";
       if (ext === "pdf") {
@@ -290,7 +290,7 @@ function ResourceDetail() {
     try {
       const { error } = await supabase.from("reports").insert({ resource_id: r.id, reporter_id: user.id, reason: reportReason, details: reportDetails.trim() || null });
       if (error) throw error;
-      setAlreadyReported(true); setReportOpen(false); toast.success("Report submitted � our team will review it.");
+      setAlreadyReported(true); setReportOpen(false); toast.success("Report submitted — our team will review it.");
     } catch (err) { toast.error(err instanceof Error ? err.message : "Failed to submit report"); }
     finally { setSubmittingReport(false); }
   };
@@ -303,7 +303,7 @@ function ResourceDetail() {
       <div className="min-h-screen bg-background">
         <Header />
         <div className="mx-auto max-w-3xl px-6 py-32 text-center">
-          <p className="text-xs uppercase tracking-[0.3em] text-mint">� 404</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-mint">— 404</p>
           <h1 className="mt-3 font-serif text-5xl text-foreground">Resource not found</h1>
           <p className="mt-3 text-muted-foreground">It may have been removed by its uploader.</p>
           <Link to="/browse" className="mt-8 inline-flex items-center gap-1.5 text-mint hover:underline"><ArrowLeft className="h-4 w-4" /> Back to the library</Link>
@@ -317,7 +317,7 @@ function ResourceDetail() {
   const publicUrl = supabase.storage.from("resources").getPublicUrl(r.file_path).data.publicUrl;
   const isPdf = r.file_path.toLowerCase().endsWith(".pdf");
   const resourceUrl = typeof window !== "undefined" ? `${window.location.origin}/resource/${r.id}` : `/resource/${r.id}`;
-  const shareText = `${r.title}${r.subject ? ` � ${r.subject}` : ` � ${r.branch} Year ${r.year}`} | CampusCache\n${resourceUrl}`;
+  const shareText = `${r.title}${r.subject ? ` · ${r.subject}` : ` · ${r.branch} Year ${r.year}`} | CampusCache\n${resourceUrl}`;
   const topTags = Object.entries(rating?.tagCounts ?? {}).sort((a, b) => b[1] - a[1]).slice(0, 5);
   const isUploader = user && r.uploaded_by === user.id;
   const avgRating = r.avg_rating ?? (rating ? rating.avgStars : 0);
@@ -341,7 +341,7 @@ function ResourceDetail() {
             {(showTopRated || showPopular) && (
               <div className="flex flex-wrap gap-2 mt-3">
                 {showTopRated && <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 border border-amber-400/30 px-3 py-1 text-xs text-amber-400 font-medium">? {avgRating.toFixed(1)} Top Rated</span>}
-                {showPopular && <span className="inline-flex items-center gap-1 rounded-full bg-mint/10 border border-mint/30 px-3 py-1 text-xs text-mint font-medium">?? {r.download_count >= 500 ? "500+" : "100+"} downloads � Popular</span>}
+                {showPopular && <span className="inline-flex items-center gap-1 rounded-full bg-mint/10 border border-mint/30 px-3 py-1 text-xs text-mint font-medium">?? {r.download_count >= 500 ? "500+" : "100+"} downloads — Popular</span>}
               </div>
             )}
 
@@ -398,7 +398,7 @@ function ResourceDetail() {
             <div className="mt-10 rounded-xl border border-border/60 bg-card/40 p-6">
               <h2 className="font-serif text-2xl text-foreground mb-1">Rate this resource</h2>
               <p className="text-sm text-muted-foreground mb-6">
-                {rating?.canRate ? (ratingSubmitted ? "You've rated this. You can update your rating below." : "You downloaded this � share your thoughts to help others.") : user ? "Download this resource first to leave a rating." : "Sign in and download this resource to leave a rating."}
+                {rating?.canRate ? (ratingSubmitted ? "You've rated this. You can update your rating below." : "You downloaded this — share your thoughts to help others.") : user ? "Download this resource first to leave a rating." : "Sign in and download this resource to leave a rating."}
               </p>
               {rating?.canRate ? (
                 <div className="space-y-4">
