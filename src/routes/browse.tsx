@@ -129,7 +129,7 @@ function BrowsePage() {
     : "created_at";
 
   const fetchPage = async (pageCursor: PageCursor | null, _cancelled: { current: boolean }) => {
-    const runQuery = async (useSharedBranches: boolean) => {
+    const runQuery = async (useSharedBranches: boolean, useFts: boolean, useFaculty: boolean) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let q: any = supabase
         .from("resources")
@@ -148,8 +148,16 @@ function BrowsePage() {
       if (search.sem) q = q.eq("semester", search.sem);
       if (search.type) q = q.eq("file_type", search.type);
       if (search.subject) q = q.eq("subject", search.subject);
-      if (search.faculty) q = q.eq("faculty_name", search.faculty);
-      if (search.q) q = q.textSearch("fts", search.q, { type: "websearch", config: "english" });
+      // faculty_name column added in migration 000009 — skip if not yet applied
+      if (useFaculty && search.faculty) q = q.eq("faculty_name", search.faculty);
+      // fts column added in migration 000008 — skip if not yet applied, fall back to title ilike
+      if (search.q) {
+        if (useFts) {
+          q = q.textSearch("fts", search.q, { type: "websearch", config: "english" });
+        } else {
+          q = q.ilike("title", `%${search.q}%`);
+        }
+      }
 
       if (pageCursor) {
         q = q.or(`${sortCol}.lt.${pageCursor.val},and(${sortCol}.eq.${pageCursor.val},id.lt.${pageCursor.id})`);
@@ -158,9 +166,21 @@ function BrowsePage() {
       return q.limit(PAGE_SIZE) as Promise<{ data: unknown[] | null; error: { code?: string; message?: string } | null; count: number | null }>;
     };
 
-    let { data, error, count } = await runQuery(true);
+    const isColMissing = (err: { code?: string; message?: string } | null) =>
+      err?.code === "42703" || (err?.message?.includes("column") ?? false) || (err?.message?.includes("does not exist") ?? false);
+
+    let { data, error, count } = await runQuery(true, true, true);
+    // Fallback 1: shared_branches column missing
     if (error && (error.code === "42703" || error.message?.toLowerCase().includes("shared_branches"))) {
-      ({ data, error, count } = await runQuery(false));
+      ({ data, error, count } = await runQuery(false, true, true));
+    }
+    // Fallback 2: fts column missing (migration 000008 not applied) — use title ilike
+    if (error && (isColMissing(error) && error.message?.includes("fts"))) {
+      ({ data, error, count } = await runQuery(false, false, true));
+    }
+    // Fallback 3: faculty_name column missing (migration 000009 not applied)
+    if (error && isColMissing(error)) {
+      ({ data, error, count } = await runQuery(false, false, false));
     }
     if (error) throw error;
     return { data: (data ?? []) as Resource[], count };
