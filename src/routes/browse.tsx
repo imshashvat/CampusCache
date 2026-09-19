@@ -1,4 +1,4 @@
-﻿import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Download, X, FileText, SlidersHorizontal, Trash2, Filter, Star, Bookmark, BookmarkCheck, Share2 } from "lucide-react";
@@ -31,7 +31,7 @@ export const Route = createFileRoute("/browse")({
   validateSearch: searchSchema,
   head: () => ({
     meta: [
-      { title: "Browse the library � CampusCache" },
+      { title: "Browse the library — CampusCache" },
       { name: "description", content: "Filter notes, PPTs, assignments and lab files by branch, year and semester. Free downloads, no signup needed." },
     ],
   }),
@@ -129,7 +129,7 @@ function BrowsePage() {
     : "created_at";
 
   const fetchPage = async (pageCursor: PageCursor | null, _cancelled: { current: boolean }) => {
-    const runQuery = async (useSharedBranches: boolean) => {
+    const runQuery = async (useSharedBranches: boolean, useFts: boolean, useFaculty: boolean) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let q: any = supabase
         .from("resources")
@@ -148,8 +148,16 @@ function BrowsePage() {
       if (search.sem) q = q.eq("semester", search.sem);
       if (search.type) q = q.eq("file_type", search.type);
       if (search.subject) q = q.eq("subject", search.subject);
-      if (search.faculty) q = q.eq("faculty_name", search.faculty);
-      if (search.q) q = q.textSearch("fts", search.q, { type: "websearch", config: "english" });
+      // faculty_name column added in migration 000009 — skip if not yet applied
+      if (useFaculty && search.faculty) q = q.eq("faculty_name", search.faculty);
+      // fts column added in migration 000008 — skip if not yet applied, fall back to title ilike
+      if (search.q) {
+        if (useFts) {
+          q = q.textSearch("fts", search.q, { type: "websearch", config: "english" });
+        } else {
+          q = q.ilike("title", `%${search.q}%`);
+        }
+      }
 
       if (pageCursor) {
         q = q.or(`${sortCol}.lt.${pageCursor.val},and(${sortCol}.eq.${pageCursor.val},id.lt.${pageCursor.id})`);
@@ -158,9 +166,21 @@ function BrowsePage() {
       return q.limit(PAGE_SIZE) as Promise<{ data: unknown[] | null; error: { code?: string; message?: string } | null; count: number | null }>;
     };
 
-    let { data, error, count } = await runQuery(true);
+    const isColMissing = (err: { code?: string; message?: string } | null) =>
+      err?.code === "42703" || (err?.message?.includes("column") ?? false) || (err?.message?.includes("does not exist") ?? false);
+
+    let { data, error, count } = await runQuery(true, true, true);
+    // Fallback 1: shared_branches column missing
     if (error && (error.code === "42703" || error.message?.toLowerCase().includes("shared_branches"))) {
-      ({ data, error, count } = await runQuery(false));
+      ({ data, error, count } = await runQuery(false, true, true));
+    }
+    // Fallback 2: fts column missing (migration 000008 not applied) — use title ilike
+    if (error && (isColMissing(error) && error.message?.includes("fts"))) {
+      ({ data, error, count } = await runQuery(false, false, true));
+    }
+    // Fallback 3: faculty_name column missing (migration 000009 not applied)
+    if (error && isColMissing(error)) {
+      ({ data, error, count } = await runQuery(false, false, false));
     }
     if (error) throw error;
     return { data: (data ?? []) as Resource[], count };
@@ -226,12 +246,12 @@ function BrowsePage() {
     if (search.sem) a.push({ key: "sem", label: `Sem ${search.sem}` });
     if (search.type) a.push({ key: "type", label: fileTypeLabel(search.type) });
     if (search.subject) a.push({ key: "subject", label: search.subject });
-    if (search.faculty) a.push({ key: "faculty", label: `?? ${search.faculty}` });
+    if (search.faculty) a.push({ key: "faculty", label: `👤 ${search.faculty}` });
     return a;
   }, [search]);
 
   const resultLabel = useMemo(() => {
-    if (resources === null) return "Loading�";
+    if (resources === null) return "Loading…";
     const shown = resources.length;
     const total = totalCount ?? shown;
     if (total > shown) return `Showing ${shown} of ${total} results`;
@@ -302,7 +322,7 @@ function BrowsePage() {
       <Header />
       <section className="border-b border-border/60 bg-card/30">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10 sm:py-12 lg:px-8">
-          <p className="text-xs uppercase tracking-[0.3em] text-mint">� the library</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-mint">— the library</p>
           <h1 className="mt-3 font-serif text-3xl sm:text-4xl lg:text-5xl text-foreground">
             Browse <span className="italic-serif text-gradient-primary">everything</span>
           </h1>
@@ -311,7 +331,7 @@ function BrowsePage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search title, subject or description�"
+                placeholder="Search title, subject or description…"
                 className="pl-9 h-11 bg-background text-sm"
                 value={search_q}
                 onChange={(e) => setQ(e.target.value)}
@@ -353,9 +373,9 @@ function BrowsePage() {
               <div className="flex items-center gap-2 text-sm">
                 <span className="text-muted-foreground">Sort:</span>
                 <button onClick={() => update({ sort: "new" })} className={search.sort !== "popular" && search.sort !== "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>Newest</button>
-                <span className="text-muted-foreground">�</span>
+                <span className="text-muted-foreground">·</span>
                 <button onClick={() => update({ sort: "popular" })} className={search.sort === "popular" ? "text-mint underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>Most downloaded</button>
-                <span className="text-muted-foreground">�</span>
+                <span className="text-muted-foreground">·</span>
                 <button onClick={() => update({ sort: "rating" })} className={search.sort === "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground hover:text-foreground"}>
                   <Star className="inline h-3 w-3 mr-0.5 fill-current" />Top rated
                 </button>
@@ -364,10 +384,10 @@ function BrowsePage() {
             <div className="flex lg:hidden items-center gap-2 text-sm mb-4">
               <span className="text-muted-foreground">Sort:</span>
               <button onClick={() => update({ sort: "new" })} className={search.sort !== "popular" && search.sort !== "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>Newest</button>
-              <span className="text-muted-foreground">�</span>
+              <span className="text-muted-foreground">·</span>
               <button onClick={() => update({ sort: "popular" })} className={search.sort === "popular" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>Popular</button>
-              <span className="text-muted-foreground">�</span>
-              <button onClick={() => update({ sort: "rating" })} className={search.sort === "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>? Rated</button>
+              <span className="text-muted-foreground">·</span>
+              <button onClick={() => update({ sort: "rating" })} className={search.sort === "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>⭐ Rated</button>
             </div>
 
             {activeFilters.length > 0 && (
@@ -414,7 +434,7 @@ function BrowsePage() {
                 {hasMore && (
                   <div className="mt-8 flex justify-center">
                     <Button variant="outline" onClick={loadMore} disabled={loadingMore} className="border-mint/40 text-foreground hover:border-mint hover:bg-accent px-8">
-                      {loadingMore ? "Loading�" : `Load ${PAGE_SIZE} more`}
+                      {loadingMore ? "Loading…" : `Load ${PAGE_SIZE} more`}
                     </Button>
                   </div>
                 )}
@@ -490,7 +510,7 @@ function ResourceCard({
   const isShared = r.shared_branches && r.shared_branches.length > 0;
 
   const resourceUrl = typeof window !== "undefined" ? `${window.location.origin}/resource/${r.id}` : `/resource/${r.id}`;
-  const shareText = `${r.title}${r.subject ? ` � ${r.subject}` : ` � ${r.branch} Year ${r.year}`} | CampusCache\n${resourceUrl}`;
+  const shareText = `${r.title}${r.subject ? ` · ${r.subject}` : ` · ${r.branch} Year ${r.year}`} | CampusCache\n${resourceUrl}`;
 
   const handleDelete = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -540,7 +560,7 @@ function ResourceCard({
       className="group relative rounded-xl border border-border/60 bg-card/60 p-5 sm:p-6 hover:border-mint/40 hover:-translate-y-0.5 transition-all shadow-card flex flex-col"
     >
       {r.is_featured && (
-        <div className="absolute top-3 right-3 text-[10px] uppercase tracking-widest text-mint">? Featured</div>
+        <div className="absolute top-3 right-3 text-[10px] uppercase tracking-widest text-mint">★ Featured</div>
       )}
 
       {/* Action buttons top-right (hover reveal) */}
@@ -577,15 +597,15 @@ function ResourceCard({
       </div>
 
       <div className="text-xs text-muted-foreground mb-1">
-        {r.subject && <span className="text-foreground">{r.subject} � </span>}
-        {r.branch} � Year {r.year} � Sem {r.semester}
+        {r.subject && <span className="text-foreground">{r.subject} · </span>}
+        {r.branch} · Year {r.year} · Sem {r.semester}
       </div>
 
       {(r.faculty_name || r.section) && (
         <div className="text-[10px] text-muted-foreground/70 mb-2">
-          {r.faculty_name && <span>?? {r.faculty_name}</span>}
-          {r.faculty_name && r.section && <span className="mx-1">�</span>}
-          {r.section && <span>� {r.section}</span>}
+          {r.faculty_name && <span>👤 {r.faculty_name}</span>}
+          {r.faculty_name && r.section && <span className="mx-1">·</span>}
+          {r.section && <span>§ {r.section}</span>}
         </div>
       )}
 
@@ -599,12 +619,12 @@ function ResourceCard({
         <div className="flex flex-wrap gap-1.5 mb-3">
           {showTopRated && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 text-[10px] text-amber-400 font-medium">
-              ? {r.avg_rating.toFixed(1)} rated
+              ⭐ {r.avg_rating.toFixed(1)} rated
             </span>
           )}
           {showPopular && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-mint/10 border border-mint/30 px-2 py-0.5 text-[10px] text-mint font-medium">
-              ?? {r.download_count >= 500 ? "500+" : "100+"} downloads
+              📥 {r.download_count >= 500 ? "500+" : "100+"} downloads
             </span>
           )}
         </div>
@@ -612,8 +632,8 @@ function ResourceCard({
 
       <div className="mt-auto pt-4 border-t border-border/60 flex items-center justify-between text-xs">
         <div className="text-muted-foreground truncate">
-          {r.is_admin_upload ? <span className="text-mint">? Admin</span> : <>by {r.profiles?.full_name ?? "Anonymous"}</>}
-          <span className="mx-1.5">�</span>
+          {r.is_admin_upload ? <span className="text-mint">★ Admin</span> : <>by {r.profiles?.full_name ?? "Anonymous"}</>}
+          <span className="mx-1.5">·</span>
           {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -643,13 +663,13 @@ function ResourceCard({
                   onClick={(e) => openShare(e, `https://wa.me/?text=${encodeURIComponent(shareText)}`)}
                   className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent text-foreground whitespace-nowrap"
                 >
-                  <span>??</span> WhatsApp
+                  <span>📱</span> WhatsApp
                 </button>
                 <button
                   onClick={(e) => openShare(e, `https://t.me/share/url?url=${encodeURIComponent(resourceUrl)}&text=${encodeURIComponent(r.title)}`)}
                   className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent text-foreground whitespace-nowrap"
                 >
-                  <span>??</span> Telegram
+                  <span>✈️</span> Telegram
                 </button>
               </div>
             )}
