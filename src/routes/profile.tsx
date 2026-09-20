@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Download, FileText, Trash2, Trophy, Star, Upload, TrendingUp, Bookmark } from "lucide-react";
+import { Download, FileText, Trash2, Trophy, Star, Upload, TrendingUp, Bookmark, Target, Flame, Medal } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -38,11 +38,11 @@ interface ContribStats {
 }
 
 const BADGE_DEFS = [
-  { key: "first_upload",   label: "First Upload",   icon: "🎯", check: (s: ContribStats) => s.upload_count >= 1 },
-  { key: "100_downloads",  label: "100 Downloads",  icon: "📥", check: (s: ContribStats) => s.downloads_received >= 100 },
-  { key: "power_uploader", label: "Power Uploader", icon: "🔥", check: (s: ContribStats) => s.upload_count >= 10 },
-  { key: "well_rated",     label: "Well Rated",     icon: "⭐", check: (s: ContribStats) => s.ratings_received >= 5 },
-  { key: "500_downloads",  label: "500 Downloads",  icon: "🏅", check: (s: ContribStats) => s.downloads_received >= 500 },
+  { key: "first_upload",   label: "First Upload",   icon: Target,   check: (s: ContribStats) => s.upload_count >= 1 },
+  { key: "100_downloads",  label: "100 Downloads",  icon: Download,  check: (s: ContribStats) => s.downloads_received >= 100 },
+  { key: "power_uploader", label: "Power Uploader", icon: Flame,     check: (s: ContribStats) => s.upload_count >= 10 },
+  { key: "well_rated",     label: "Well Rated",     icon: Star,      check: (s: ContribStats) => s.ratings_received >= 5 },
+  { key: "500_downloads",  label: "500 Downloads",  icon: Medal,     check: (s: ContribStats) => s.downloads_received >= 500 },
 ] as const;
 
 function ProfilePage() {
@@ -206,13 +206,13 @@ function ProfilePage() {
             {(() => {
               const earned = BADGE_DEFS.filter((b) => b.check(stats));
               if (earned.length === 0) return (
-                <p className="text-xs text-muted-foreground italic-serif">Upload resources and get downloads to earn badges 🎯</p>
+                <p className="text-xs text-muted-foreground italic-serif">Upload resources and get downloads to earn badges</p>
               );
               return (
                 <div className="flex flex-wrap gap-2">
                   {earned.map((b) => (
                     <div key={b.key} className="flex items-center gap-2 rounded-full border border-mint/20 bg-mint/5 px-3 py-1.5 text-xs">
-                      <span className="text-base">{b.icon}</span>
+                      <b.icon className="h-3.5 w-3.5 text-mint" />
                       <span className="font-medium text-foreground">{b.label}</span>
                     </div>
                   ))}

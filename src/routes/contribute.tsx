@@ -6,7 +6,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import {
   Upload, FileText, CheckCircle2, Trophy, Medal, Star,
-  Download, Users, TrendingUp, RefreshCw,
+  Download, Users, TrendingUp, RefreshCw, Info, Target, Flame,
 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -58,11 +58,11 @@ interface LeaderboardEntry {
 }
 
 const BADGE_DEFS = [
-  { key: "first_upload",   label: "First Upload",     icon: "🎯", check: (e: LeaderboardEntry) => e.upload_count >= 1 },
-  { key: "100_downloads",  label: "100 Downloads",    icon: "📥", check: (e: LeaderboardEntry) => e.downloads_received >= 100 },
-  { key: "power_uploader", label: "Power Uploader",   icon: "🔥", check: (e: LeaderboardEntry) => e.upload_count >= 10 },
-  { key: "well_rated",     label: "Well Rated",       icon: "⭐", check: (e: LeaderboardEntry) => e.ratings_received >= 5 },
-  { key: "500_downloads",  label: "500 Downloads",    icon: "🏅", check: (e: LeaderboardEntry) => e.downloads_received >= 500 },
+  { key: "first_upload",   label: "First Upload",     icon: Target,   check: (e: LeaderboardEntry) => e.upload_count >= 1 },
+  { key: "100_downloads",  label: "100 Downloads",    icon: Download,  check: (e: LeaderboardEntry) => e.downloads_received >= 100 },
+  { key: "power_uploader", label: "Power Uploader",   icon: Flame,     check: (e: LeaderboardEntry) => e.upload_count >= 10 },
+  { key: "well_rated",     label: "Well Rated",       icon: Star,      check: (e: LeaderboardEntry) => e.ratings_received >= 5 },
+  { key: "500_downloads",  label: "500 Downloads",    icon: Medal,     check: (e: LeaderboardEntry) => e.downloads_received >= 500 },
 ] as const;
 
 function getBadges(entry: LeaderboardEntry) {
@@ -70,9 +70,9 @@ function getBadges(entry: LeaderboardEntry) {
 }
 
 const PODIUM_STYLES = [
-  { ring: "ring-2 ring-amber-400/60", bg: "bg-amber-400/10", label: "text-amber-400", crown: "🥇", order: "order-1" },
-  { ring: "ring-2 ring-slate-400/60", bg: "bg-slate-400/10",  label: "text-slate-400",  crown: "🥈", order: "order-first lg:order-0" },
-  { ring: "ring-2 ring-orange-600/60", bg: "bg-orange-600/10", label: "text-orange-500", crown: "🥉", order: "order-2" },
+  { ring: "ring-2 ring-amber-400/60", bg: "bg-amber-400/10", label: "text-amber-400", rank: "#1", order: "order-1" },
+  { ring: "ring-2 ring-slate-400/60", bg: "bg-slate-400/10",  label: "text-slate-400",  rank: "#2", order: "order-first lg:order-0" },
+  { ring: "ring-2 ring-orange-600/60", bg: "bg-orange-600/10", label: "text-orange-500", rank: "#3", order: "order-2" },
 ];
 
 function Leaderboard() {
@@ -121,7 +121,7 @@ function Leaderboard() {
             Points: upload ×10 · download received ×1 · featured ×5 · rating received ×2
           </p>
           <p className="mt-1 text-xs text-muted-foreground/60 flex items-center gap-1">
-            <span>ℹ️</span> Only signed-in user downloads count — guest downloads are not included.
+            <Info className="h-3 w-3 shrink-0" /> Only signed-in user downloads count — guest downloads are not included.
           </p>
         </div>
         <button
@@ -179,7 +179,7 @@ function Leaderboard() {
                           key={entry.user_id}
                           className={`relative rounded-2xl border ${s.ring} ${s.bg} p-4 sm:p-6 text-center flex flex-col items-center ${s.order} ${idx === 0 ? "pb-8" : ""}`}
                         >
-                          <div className="text-2xl sm:text-3xl mb-2">{s.crown}</div>
+                          <div className={`text-2xl sm:text-3xl mb-2 font-serif font-bold ${s.label}`}>{s.rank}</div>
                           <div className={`text-xs sm:text-sm font-mono uppercase tracking-widest ${s.label} mb-1`}>#{idx + 1}</div>
                           <div className="font-serif text-base sm:text-xl text-foreground leading-tight">
                             {entry.full_name ?? "Anonymous"}
@@ -193,7 +193,7 @@ function Leaderboard() {
                           </div>
                           <div className="mt-2 flex flex-wrap justify-center gap-1">
                             {badges.slice(0, 3).map((b) => (
-                              <span key={b.key} title={b.label} className="text-base">{b.icon}</span>
+                              <b.icon key={b.key} className="h-3.5 w-3.5 text-mint" aria-label={b.label} />
                             ))}
                           </div>
                           <div className="mt-3 flex items-center justify-center gap-3 text-[10px] text-muted-foreground">
@@ -234,7 +234,7 @@ function Leaderboard() {
                               <td className="p-3 text-mint font-medium">{(entry[pointKey] as number).toLocaleString()}</td>
                               <td className="p-3 hidden sm:table-cell">
                                 {badges.map((b) => (
-                                  <span key={b.key} title={b.label} className="mr-1">{b.icon}</span>
+                                  <b.icon key={b.key} className="h-3 w-3 text-mint inline mr-1" aria-label={b.label} />
                                 ))}
                               </td>
                             </tr>
@@ -256,7 +256,7 @@ function Leaderboard() {
         <div className="flex flex-wrap gap-3">
           {BADGE_DEFS.map((b) => (
             <div key={b.key} className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="text-base">{b.icon}</span>
+              <b.icon className="h-3.5 w-3.5 text-mint" />
               <span className="font-medium text-foreground">{b.label}</span>
             </div>
           ))}
@@ -350,7 +350,7 @@ function ContributePage() {
       if (insErr) throw insErr;
 
       setUploadProgress(100);
-      toast.success("Resource published 🎉");
+      toast.success("Resource published! Your contribution is now live.");
       navigate({ to: "/resource/$id", params: { id: inserted.id } });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Upload failed");

@@ -120,7 +120,7 @@ function LandingPage() {
               Every <span className="italic-serif text-gradient-primary">format</span> you'll need
             </h2>
           </div>
-          <Link to="/browse" className="text-sm text-mint hover:underline underline-offset-4">View all →</Link>
+          <Link to="/browse" className="inline-flex items-center gap-1 text-sm text-mint hover:underline underline-offset-4">View all <ArrowRight className="h-3.5 w-3.5" /></Link>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
