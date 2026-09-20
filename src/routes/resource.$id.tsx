@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import {
   Download, ArrowLeft, FileText, Calendar, User as UserIcon,
   HardDrive, Trash2, ExternalLink, Pencil, Check, X, Star,
-  Bookmark, BookmarkCheck, Share2, Flag,
+  Bookmark, BookmarkCheck, Share2, Flag, MessageCircle, Send,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
@@ -340,8 +340,8 @@ function ResourceDetail() {
 
             {(showTopRated || showPopular) && (
               <div className="flex flex-wrap gap-2 mt-3">
-                {showTopRated && <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 border border-amber-400/30 px-3 py-1 text-xs text-amber-400 font-medium">? {avgRating.toFixed(1)} Top Rated</span>}
-                {showPopular && <span className="inline-flex items-center gap-1 rounded-full bg-mint/10 border border-mint/30 px-3 py-1 text-xs text-mint font-medium">?? {r.download_count >= 500 ? "500+" : "100+"} downloads — Popular</span>}
+                {showTopRated && <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/10 border border-amber-400/30 px-3 py-1 text-xs text-amber-400 font-medium"><Star className="h-3 w-3 fill-amber-400" /> {avgRating.toFixed(1)} Top Rated</span>}
+                {showPopular && <span className="inline-flex items-center gap-1 rounded-full bg-mint/10 border border-mint/30 px-3 py-1 text-xs text-mint font-medium"><Download className="h-3 w-3" /> {r.download_count >= 500 ? "500+" : "100+"} downloads — Popular</span>}
               </div>
             )}
 
@@ -445,8 +445,8 @@ function ResourceDetail() {
               </Button>
               {shareOpen && (
                 <div className="absolute left-0 top-12 z-20 w-full rounded-lg border border-border/60 bg-card shadow-lg p-2 flex flex-col gap-1">
-                  <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank", "noopener,noreferrer"); setShareOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-accent text-foreground">?? WhatsApp</button>
-                  <button onClick={() => { window.open(`https://t.me/share/url?url=${encodeURIComponent(resourceUrl)}&text=${encodeURIComponent(r.title)}`, "_blank", "noopener,noreferrer"); setShareOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-accent text-foreground">?? Telegram</button>
+                  <button onClick={() => { window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank", "noopener,noreferrer"); setShareOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-accent text-foreground"><MessageCircle className="h-4 w-4 text-green-500" /> WhatsApp</button>
+                  <button onClick={() => { window.open(`https://t.me/share/url?url=${encodeURIComponent(resourceUrl)}&text=${encodeURIComponent(r.title)}`, "_blank", "noopener,noreferrer"); setShareOpen(false); }} className="flex items-center gap-2 px-3 py-2 text-sm rounded hover:bg-accent text-foreground"><Send className="h-4 w-4 text-sky-400" /> Telegram</button>
                 </div>
               )}
             </div>
@@ -480,7 +480,7 @@ function ResourceDetail() {
               </Button>
             )}
             <div className="rounded-xl border border-border/60 bg-card/60 p-6 space-y-4 text-sm">
-              <Detail icon={UserIcon} label="Uploaded by" value={r.is_admin_upload ? "? Admin" : (r.profiles?.full_name ?? "Anonymous")} valueClass={r.is_admin_upload ? "text-mint" : ""} />
+              <Detail icon={UserIcon} label="Uploaded by" value={r.is_admin_upload ? "Admin" : (r.profiles?.full_name ?? "Anonymous")} valueClass={r.is_admin_upload ? "text-mint font-semibold" : ""} />
               <Detail icon={Calendar} label="Added" value={formatDistanceToNow(new Date(r.created_at), { addSuffix: true })} />
               <Detail icon={HardDrive} label="Size" value={formatBytes(r.file_size)} />
               <Detail icon={Download} label="Downloads" value={r.download_count.toLocaleString()} />

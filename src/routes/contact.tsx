@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import { Send, Mail, MessageSquare, CheckCircle2, AlertCircle } from "lucide-react";
+import { Send, Mail, MessageSquare, CheckCircle2, AlertCircle, Bug, Lightbulb, FileWarning, HelpCircle, MessageSquarePlus, Handshake } from "lucide-react";
 import emailjs from "@emailjs/browser";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
@@ -214,16 +214,17 @@ function ContactPage() {
             <div className="rounded-xl border border-border/60 bg-card/40 p-6">
               <h3 className="font-serif text-lg text-foreground mb-4">What can you contact us about?</h3>
               <ul className="space-y-2.5 text-sm text-muted-foreground">
-                {[
-                  "🐛  Bug reports & broken links",
-                  "💡  Feature suggestions",
-                  "📄  Wrong or duplicate content",
-                  "🙋  Account & upload help",
-                  "💬  General feedback",
-                  "🤝  Collaboration & contributions",
-                ].map((item) => (
-                  <li key={item} className="flex items-start gap-2">
-                    <span>{item}</span>
+              {[
+                  { icon: Bug,              text: "Bug reports & broken links" },
+                  { icon: Lightbulb,        text: "Feature suggestions" },
+                  { icon: FileWarning,      text: "Wrong or duplicate content" },
+                  { icon: HelpCircle,       text: "Account & upload help" },
+                  { icon: MessageSquarePlus, text: "General feedback" },
+                  { icon: Handshake,        text: "Collaboration & contributions" },
+                ].map(({ icon: Icon, text }) => (
+                  <li key={text} className="flex items-start gap-2">
+                    <Icon className="h-4 w-4 mt-0.5 shrink-0 text-mint" />
+                    <span>{text}</span>
                   </li>
                 ))}
               </ul>

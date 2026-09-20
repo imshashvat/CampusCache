@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Download, X, FileText, SlidersHorizontal, Trash2, Filter, Star, Bookmark, BookmarkCheck, Share2 } from "lucide-react";
+import { Search, Download, X, FileText, SlidersHorizontal, Trash2, Filter, Star, Bookmark, BookmarkCheck, Share2, MessageCircle, Send, User, ShieldCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { Header } from "@/components/Header";
@@ -246,7 +246,7 @@ function BrowsePage() {
     if (search.sem) a.push({ key: "sem", label: `Sem ${search.sem}` });
     if (search.type) a.push({ key: "type", label: fileTypeLabel(search.type) });
     if (search.subject) a.push({ key: "subject", label: search.subject });
-    if (search.faculty) a.push({ key: "faculty", label: `👤 ${search.faculty}` });
+    if (search.faculty) a.push({ key: "faculty", label: `By: ${search.faculty}` });
     return a;
   }, [search]);
 
@@ -387,7 +387,9 @@ function BrowsePage() {
               <span className="text-muted-foreground">·</span>
               <button onClick={() => update({ sort: "popular" })} className={search.sort === "popular" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>Popular</button>
               <span className="text-muted-foreground">·</span>
-              <button onClick={() => update({ sort: "rating" })} className={search.sort === "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>⭐ Rated</button>
+              <button onClick={() => update({ sort: "rating" })} className={search.sort === "rating" ? "text-mint underline underline-offset-4" : "text-muted-foreground"}>
+                <Star className="inline h-3 w-3 mr-0.5 fill-current" />Rated
+              </button>
             </div>
 
             {activeFilters.length > 0 && (
@@ -560,7 +562,7 @@ function ResourceCard({
       className="group relative rounded-xl border border-border/60 bg-card/60 p-5 sm:p-6 hover:border-mint/40 hover:-translate-y-0.5 transition-all shadow-card flex flex-col"
     >
       {r.is_featured && (
-        <div className="absolute top-3 right-3 text-[10px] uppercase tracking-widest text-mint">★ Featured</div>
+        <div className="absolute top-3 right-3 flex items-center gap-0.5 text-[10px] uppercase tracking-widest text-mint"><Star className="h-2.5 w-2.5 fill-mint" /> Featured</div>
       )}
 
       {/* Action buttons top-right (hover reveal) */}
@@ -603,9 +605,9 @@ function ResourceCard({
 
       {(r.faculty_name || r.section) && (
         <div className="text-[10px] text-muted-foreground/70 mb-2">
-          {r.faculty_name && <span>👤 {r.faculty_name}</span>}
+          {r.faculty_name && <span className="inline-flex items-center gap-0.5"><User className="h-2.5 w-2.5" /> {r.faculty_name}</span>}
           {r.faculty_name && r.section && <span className="mx-1">·</span>}
-          {r.section && <span>§ {r.section}</span>}
+          {r.section && <span># {r.section}</span>}
         </div>
       )}
 
@@ -619,12 +621,12 @@ function ResourceCard({
         <div className="flex flex-wrap gap-1.5 mb-3">
           {showTopRated && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/10 border border-amber-400/30 px-2 py-0.5 text-[10px] text-amber-400 font-medium">
-              ⭐ {r.avg_rating.toFixed(1)} rated
+              <Star className="h-2.5 w-2.5 fill-amber-400" /> {r.avg_rating.toFixed(1)} rated
             </span>
           )}
           {showPopular && (
             <span className="inline-flex items-center gap-0.5 rounded-full bg-mint/10 border border-mint/30 px-2 py-0.5 text-[10px] text-mint font-medium">
-              📥 {r.download_count >= 500 ? "500+" : "100+"} downloads
+              <Download className="h-2.5 w-2.5" /> {r.download_count >= 500 ? "500+" : "100+"} downloads
             </span>
           )}
         </div>
@@ -632,7 +634,7 @@ function ResourceCard({
 
       <div className="mt-auto pt-4 border-t border-border/60 flex items-center justify-between text-xs">
         <div className="text-muted-foreground truncate">
-          {r.is_admin_upload ? <span className="text-mint">★ Admin</span> : <>by {r.profiles?.full_name ?? "Anonymous"}</>}
+          {r.is_admin_upload ? <span className="inline-flex items-center gap-0.5 text-mint"><ShieldCheck className="h-3 w-3" /> Admin</span> : <>by {r.profiles?.full_name ?? "Anonymous"}</>}
           <span className="mx-1.5">·</span>
           {formatDistanceToNow(new Date(r.created_at), { addSuffix: true })}
         </div>
@@ -663,13 +665,13 @@ function ResourceCard({
                   onClick={(e) => openShare(e, `https://wa.me/?text=${encodeURIComponent(shareText)}`)}
                   className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent text-foreground whitespace-nowrap"
                 >
-                  <span>📱</span> WhatsApp
+                  <MessageCircle className="h-3.5 w-3.5 text-green-500" /> WhatsApp
                 </button>
                 <button
                   onClick={(e) => openShare(e, `https://t.me/share/url?url=${encodeURIComponent(resourceUrl)}&text=${encodeURIComponent(r.title)}`)}
                   className="flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-accent text-foreground whitespace-nowrap"
                 >
-                  <span>✈️</span> Telegram
+                  <Send className="h-3.5 w-3.5 text-sky-400" /> Telegram
                 </button>
               </div>
             )}
