@@ -29,7 +29,7 @@ const schema = z.object({
   branch: z.string().min(1, "Pick a branch"),
   year: z.number().int().min(1).max(4),
   semester: z.number().int().min(1).max(8),
-  subject: z.string().trim().max(80).optional(),
+  subject: z.string().trim().min(1, "Subject is required").max(80),
   faculty_name: z.string().trim().max(80).optional(),
   section: z.string().trim().max(20).optional(),
 });
@@ -426,8 +426,9 @@ function ContributePage() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="subject">Subject (optional)</Label>
+              <Label htmlFor="subject">Subject <span className="text-destructive">*</span></Label>
               <Input id="subject" {...form.register("subject")} placeholder="e.g. Operating Systems" className="mt-2 bg-card" />
+              {form.formState.errors.subject && <p className="text-xs text-destructive mt-1">{form.formState.errors.subject.message}</p>}
             </div>
           </div>
 

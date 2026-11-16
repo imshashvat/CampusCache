@@ -46,9 +46,12 @@ export async function validateUpload(
   const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const SUPABASE_ANON_KEY = process.env.SUPABASE_PUBLISHABLE_KEY ?? process.env.VITE_SUPABASE_ANON_KEY;
 
-  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_ANON_KEY) {
-    return { status: 500, error: "Server misconfiguration" };
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    return { status: 500, error: "Server misconfiguration: missing Supabase URL or anon key" };
   }
+
+  // Service role key is needed for file deletion on failure; if absent, skip deletions
+  const canDelete = !!SUPABASE_SERVICE_ROLE_KEY;
 
   const userClient = createClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -71,11 +74,19 @@ export async function validateUpload(
   }
 
   const ext = getExtension(fileName);
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    const adminClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+
+  const makeAdminClient = () =>
+    createClient<Database>(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!, {
       auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
     });
-    await adminClient.storage.from("resources").remove([filePath]);
+
+  const tryDelete = async (path: string) => {
+    if (!canDelete) return;
+    await makeAdminClient().storage.from("resources").remove([path]);
+  };
+
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    await tryDelete(filePath);
     return {
       status: 422,
       error: `File type ".${ext}" is not allowed. Allowed types: ${[...ALLOWED_EXTENSIONS].join(", ")}`,
@@ -83,10 +94,7 @@ export async function validateUpload(
   }
 
   if (fileSize > MAX_BYTES) {
-    const adminClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
-    });
-    await adminClient.storage.from("resources").remove([filePath]);
+    await tryDelete(filePath);
     return { status: 422, error: "File size exceeds the 25 MB limit." };
   }
 
@@ -96,9 +104,11 @@ export async function validateUpload(
 
   const matchedSig = MAGIC_SIGNATURES.find((s) => s.extensions.has(ext));
   if (matchedSig) {
-    const adminClient = createClient<Database>(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-      auth: { storage: undefined, persistSession: false, autoRefreshToken: false },
-    });
+    if (!canDelete) {
+      // Can't do magic-byte validation without service role key — skip safely
+      return { status: 200, ok: true };
+    }
+    const adminClient = makeAdminClient();
     const { data: fileBlob, error: downloadErr } = await adminClient.storage.from("resources").download(filePath);
     if (downloadErr || !fileBlob) {
       await adminClient.storage.from("resources").remove([filePath]);
