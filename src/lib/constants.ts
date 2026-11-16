@@ -1,4 +1,4 @@
-export const BRANCHES = [
+﻿export const BRANCHES = [
   "CSE",
   "IT",
   "ECE",
@@ -31,10 +31,11 @@ export const fileTypeColor = (v: string) =>
   FILE_TYPES.find((t) => t.value === v)?.color ?? "oklch(0.72 0.04 200)";
 
 export const formatBytes = (b?: number | null) => {
-  if (!b) return "—";
+  if (!b) return "\u2014";
   const u = ["B", "KB", "MB", "GB"];
   let i = 0;
   let n = b;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
 };
+

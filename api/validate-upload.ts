@@ -12,7 +12,7 @@ const ALLOWED_EXTENSIONS = new Set([
   "txt", "png", "jpg", "jpeg", "zip",
 ]);
 
-const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+const MAX_BYTES = 50 * 1024 * 1024; // 50 MB
 
 const MAGIC_SIGNATURES: Array<{ extensions: Set<string>; bytes: number[] }> = [
   { extensions: new Set(["pdf"]),         bytes: [0x25, 0x50, 0x44, 0x46] },          // %PDF

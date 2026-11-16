@@ -20,7 +20,7 @@ import { useAuth } from "@/lib/auth";
 import { supabase } from "@/integrations/supabase/client";
 import { BRANCHES, YEARS, SEMESTERS, FILE_TYPES, formatBytes } from "@/lib/constants";
 
-const MAX_SIZE = 25 * 1024 * 1024;
+const MAX_SIZE = 50 * 1024 * 1024;
 
 const schema = z.object({
   title: z.string().trim().min(3, "Title must be at least 3 characters").max(120),
